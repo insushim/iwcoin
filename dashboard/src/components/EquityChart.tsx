@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { useState, useEffect } from "react";
-import type { EquityPoint } from "@/lib/supabase";
 
 const ResponsiveContainer = dynamic(
   () => import("recharts").then((m) => m.ResponsiveContainer),
@@ -29,17 +28,32 @@ const CartesianGrid = dynamic(
 );
 
 interface Props {
-  data: EquityPoint[];
+  data: { date: string; price?: number; equity?: number }[];
+  dataKey?: string;
+  title?: string;
+  color?: string;
+  formatValue?: (v: number) => string;
 }
 
-export default function EquityChart({ data }: Props) {
+export default function EquityChart({
+  data,
+  dataKey = "equity",
+  title = "자산 곡선",
+  color = "#10b981",
+  formatValue,
+}: Props) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  if (!mounted) {
+  const fmt =
+    formatValue ??
+    ((v: number) =>
+      `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`);
+
+  if (!mounted || data.length === 0) {
     return (
       <div className="rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 p-5">
-        <h3 className="mb-4 text-sm font-medium text-zinc-400">Equity Curve</h3>
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">{title}</h3>
         <div className="h-[300px] animate-pulse rounded-lg bg-zinc-800/50" />
       </div>
     );
@@ -47,13 +61,13 @@ export default function EquityChart({ data }: Props) {
 
   return (
     <div className="rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 p-5">
-      <h3 className="mb-4 text-sm font-medium text-zinc-400">Equity Curve</h3>
+      <h3 className="mb-4 text-sm font-medium text-zinc-400">{title}</h3>
       <ResponsiveContainer width="100%" height={300}>
         <AreaChart data={data}>
           <defs>
-            <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
-              <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+            <linearGradient id={`grad_${dataKey}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.4} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
@@ -64,8 +78,8 @@ export default function EquityChart({ data }: Props) {
           />
           <YAxis
             tick={{ fontSize: 11, fill: "#71717a" }}
-            tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
-            domain={["dataMin - 2000", "dataMax + 2000"]}
+            tickFormatter={(v: number) => fmt(v)}
+            domain={["dataMin * 0.99", "dataMax * 1.01"]}
           />
           <Tooltip
             contentStyle={{
@@ -74,14 +88,14 @@ export default function EquityChart({ data }: Props) {
               borderRadius: 8,
             }}
             labelStyle={{ color: "#a1a1aa" }}
-            formatter={(v) => [`$${Number(v).toFixed(2)}`, "Equity"]}
+            formatter={(v) => [fmt(Number(v)), title]}
           />
           <Area
             type="monotone"
-            dataKey="equity"
-            stroke="#10b981"
+            dataKey={dataKey}
+            stroke={color}
             strokeWidth={2}
-            fill="url(#eqGrad)"
+            fill={`url(#grad_${dataKey})`}
           />
         </AreaChart>
       </ResponsiveContainer>

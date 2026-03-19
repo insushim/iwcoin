@@ -1,9 +1,7 @@
 "use client";
 
-import type { RegimeData } from "@/lib/supabase";
-
 interface Props {
-  regime: RegimeData["regime"];
+  regime: "bull" | "bear" | "sideways";
   fearGreed: number;
 }
 
@@ -44,7 +42,7 @@ export default function RegimeIndicator({ regime, fearGreed }: Props) {
         </span>
       </div>
       <div className="text-sm text-zinc-400">
-        공포·탐욕:{" "}
+        공포/탐욕:{" "}
         <span className="font-semibold text-zinc-200">{fearGreed}</span>
       </div>
     </div>

@@ -1,229 +1,231 @@
 import { create } from "zustand";
 import type {
-  Trade,
-  Position,
-  Strategy,
+  CoinPrice,
+  FearGreedData,
+  FearGreedHistoryItem,
+  PaperAccount,
+  PaperPosition,
+  PaperTrade,
+  EquitySnapshot,
   RegimeData,
-  EquityPoint,
-  DashboardSummary,
-} from "./supabase";
+} from "./types";
+import { PaperTradingEngine } from "./paper-trading";
+import { AutoStrategyRunner } from "./auto-strategy";
+import {
+  fetchPrices,
+  fetchFearGreed,
+  fetchFearGreedHistory,
+  fetchMarketChart,
+  fetchGlobalData,
+} from "./api";
 
-// ---- Mock data ----
-
-const mockRegime: RegimeData = {
-  id: "1",
-  regime: "bull",
-  fear_greed_index: 72,
-  timestamp: "2026-03-19T09:00:00Z",
-  btc_dominance: 54.2,
-  volatility: 32.1,
-};
-
-const mockSummary: DashboardSummary = {
-  total_balance: 125430.56,
-  daily_pnl: 2340.12,
-  daily_pnl_pct: 1.9,
-  open_positions: 4,
-  active_strategies: 3,
-  current_regime: mockRegime,
-};
-
-const mockEquity: EquityPoint[] = Array.from({ length: 90 }, (_, i) => {
-  const d = new Date("2025-12-20");
-  d.setDate(d.getDate() + i);
-  return {
-    date: d.toISOString().slice(0, 10),
-    equity:
-      100000 + Math.sin(i / 8) * 5000 + i * 280 + (Math.random() - 0.3) * 2000,
-  };
-});
-
-const symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "AVAX/USDT", "ARB/USDT"];
-const strats = [
-  "Momentum Alpha",
-  "Mean Reversion",
-  "Breakout Hunter",
-  "Grid Bot",
-  "DCA Smart",
-];
-
-const mockPositions: Position[] = [
-  {
-    id: "p1",
-    symbol: "BTC/USDT",
-    side: "long",
-    entry_price: 84200,
-    current_price: 86540,
-    quantity: 0.5,
-    unrealized_pnl: 1170,
-    stop_loss: 82000,
-    take_profit: 92000,
-    strategy: "Momentum Alpha",
-    opened_at: "2026-03-17T14:30:00Z",
-  },
-  {
-    id: "p2",
-    symbol: "ETH/USDT",
-    side: "long",
-    entry_price: 3150,
-    current_price: 3280,
-    quantity: 5,
-    unrealized_pnl: 650,
-    stop_loss: 2950,
-    take_profit: 3600,
-    strategy: "Breakout Hunter",
-    opened_at: "2026-03-18T08:15:00Z",
-  },
-  {
-    id: "p3",
-    symbol: "SOL/USDT",
-    side: "short",
-    entry_price: 142,
-    current_price: 138.5,
-    quantity: 40,
-    unrealized_pnl: 140,
-    stop_loss: 150,
-    take_profit: 125,
-    strategy: "Mean Reversion",
-    opened_at: "2026-03-18T22:00:00Z",
-  },
-  {
-    id: "p4",
-    symbol: "ARB/USDT",
-    side: "long",
-    entry_price: 1.12,
-    current_price: 1.08,
-    quantity: 2000,
-    unrealized_pnl: -80,
-    stop_loss: 1.0,
-    take_profit: 1.35,
-    strategy: "DCA Smart",
-    opened_at: "2026-03-16T11:00:00Z",
-  },
-];
-
-const mockTrades: Trade[] = Array.from({ length: 40 }, (_, i) => {
-  const d = new Date("2026-03-01");
-  d.setDate(d.getDate() + Math.floor(i / 2));
-  const sym = symbols[i % symbols.length];
-  const side = i % 3 === 0 ? ("short" as const) : ("long" as const);
-  const entry = 1000 + Math.random() * 500;
-  const pnl = (Math.random() - 0.35) * 400;
-  return {
-    id: `t${i}`,
-    symbol: sym,
-    side,
-    entry_price: +entry.toFixed(2),
-    exit_price: +(entry + pnl / 10).toFixed(2),
-    quantity: +(Math.random() * 5 + 0.1).toFixed(3),
-    pnl: +pnl.toFixed(2),
-    strategy: strats[i % strats.length],
-    opened_at: d.toISOString(),
-    closed_at: new Date(
-      d.getTime() + 3600000 * (1 + Math.random() * 48),
-    ).toISOString(),
-    status: "closed" as const,
-  };
-});
-
-const mockStrategies: Strategy[] = [
-  {
-    id: "s1",
-    name: "Momentum Alpha",
-    description: "Trend-following on 4H timeframe with volume confirmation",
-    status: "active",
-    win_rate: 62.5,
-    total_pnl: 18420,
-    sharpe_ratio: 1.84,
-    total_trades: 156,
-    allocation_pct: 35,
-  },
-  {
-    id: "s2",
-    name: "Mean Reversion",
-    description: "Bollinger band mean reversion on 1H with RSI filter",
-    status: "active",
-    win_rate: 58.1,
-    total_pnl: 9870,
-    sharpe_ratio: 1.42,
-    total_trades: 243,
-    allocation_pct: 25,
-  },
-  {
-    id: "s3",
-    name: "Breakout Hunter",
-    description: "Breakout detection with ATR-based stop placement",
-    status: "active",
-    win_rate: 45.3,
-    total_pnl: 12650,
-    sharpe_ratio: 1.65,
-    total_trades: 98,
-    allocation_pct: 20,
-  },
-  {
-    id: "s4",
-    name: "Grid Bot",
-    description: "Range-bound grid trading for sideways markets",
-    status: "paused",
-    win_rate: 71.2,
-    total_pnl: 4320,
-    sharpe_ratio: 0.92,
-    total_trades: 512,
-    allocation_pct: 10,
-  },
-  {
-    id: "s5",
-    name: "DCA Smart",
-    description: "Dollar cost averaging with regime-aware entry sizing",
-    status: "paused",
-    win_rate: 54.8,
-    total_pnl: 3210,
-    sharpe_ratio: 1.12,
-    total_trades: 87,
-    allocation_pct: 10,
-  },
-];
-
-const mockRegimeHistory: RegimeData[] = Array.from({ length: 30 }, (_, i) => {
-  const d = new Date("2026-02-18");
-  d.setDate(d.getDate() + i);
-  const regimes: RegimeData["regime"][] = [
-    "bull",
-    "bull",
-    "sideways",
-    "bear",
-    "bull",
-  ];
-  return {
-    id: `r${i}`,
-    regime: regimes[Math.floor(i / 7) % regimes.length],
-    fear_greed_index: 30 + Math.floor(Math.random() * 50),
-    timestamp: d.toISOString(),
-    btc_dominance: 52 + Math.random() * 5,
-    volatility: 20 + Math.random() * 25,
-  };
-});
-
-// ---- Store ----
+const engine = new PaperTradingEngine();
+let strategyRunner: AutoStrategyRunner | null = null;
+let priceInterval: ReturnType<typeof setInterval> | null = null;
+let fngInterval: ReturnType<typeof setInterval> | null = null;
 
 interface DashboardStore {
-  summary: DashboardSummary;
-  equity: EquityPoint[];
-  positions: Position[];
-  trades: Trade[];
-  strategies: Strategy[];
-  regimeHistory: RegimeData[];
+  // Real data
+  prices: CoinPrice[];
+  fearGreed: FearGreedData;
+  fearGreedHistory: FearGreedHistoryItem[];
+  btcDominance: number;
+  totalMarketCap: number;
+  btcChart: { date: string; price: number }[];
+
+  // Paper trading
+  account: PaperAccount;
+  equityHistory: EquitySnapshot[];
+
+  // Actions
+  openPosition: (params: {
+    symbol: string;
+    side: "long" | "short";
+    quantity: number;
+    entry_price: number;
+    stop_loss: number;
+    take_profit: number;
+    strategy: string;
+  }) => PaperPosition | null;
+  closePosition: (id: string, price: number) => PaperTrade | null;
+  resetAccount: (balance: number) => void;
+
+  // Auto strategy
+  isAutoTrading: boolean;
+  toggleAutoTrading: () => void;
+
+  // UI
+  loading: boolean;
+  error: string | null;
   sidebarOpen: boolean;
   toggleSidebar: () => void;
+
+  // Init
+  initialize: () => Promise<void>;
+  refreshPrices: () => Promise<void>;
+
+  // Regime
+  regime: RegimeData;
 }
 
-export const useDashboardStore = create<DashboardStore>((set) => ({
-  summary: mockSummary,
-  equity: mockEquity,
-  positions: mockPositions,
-  trades: mockTrades,
-  strategies: mockStrategies,
-  regimeHistory: mockRegimeHistory,
+export const useDashboardStore = create<DashboardStore>((set, get) => ({
+  prices: [],
+  fearGreed: { value: 50, classification: "Neutral" },
+  fearGreedHistory: [],
+  btcDominance: 0,
+  totalMarketCap: 0,
+  btcChart: [],
+
+  account: engine.getAccount(),
+  equityHistory: engine.getEquityHistory(),
+
+  regime: { regime: "sideways", fearGreed: 50, btcDominance: 0 },
+
+  isAutoTrading: false,
+  loading: true,
+  error: null,
   sidebarOpen: false,
+
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+
+  openPosition: (params) => {
+    const pos = engine.openPosition(params);
+    if (pos) {
+      set({
+        account: engine.getAccount(),
+        equityHistory: engine.getEquityHistory(),
+      });
+    }
+    return pos;
+  },
+
+  closePosition: (id, price) => {
+    const trade = engine.closePosition(id, price);
+    if (trade) {
+      set({
+        account: engine.getAccount(),
+        equityHistory: engine.getEquityHistory(),
+      });
+    }
+    return trade;
+  },
+
+  resetAccount: (balance) => {
+    engine.reset(balance);
+    set({
+      account: engine.getAccount(),
+      equityHistory: engine.getEquityHistory(),
+    });
+  },
+
+  toggleAutoTrading: () => {
+    const { isAutoTrading } = get();
+    if (isAutoTrading) {
+      strategyRunner?.stop();
+      strategyRunner = null;
+      set({ isAutoTrading: false });
+    } else {
+      strategyRunner = new AutoStrategyRunner(engine);
+      strategyRunner.start(() => get().prices);
+      set({ isAutoTrading: true });
+    }
+  },
+
+  refreshPrices: async () => {
+    try {
+      const prices = await fetchPrices();
+      const priceMap: Record<string, number> = {};
+      for (const p of prices) priceMap[p.symbol] = p.price;
+      engine.updatePrices(priceMap);
+      engine.checkTriggers(priceMap);
+      engine.snapshotEquity();
+
+      const fg = get().fearGreed;
+      const bd = get().btcDominance;
+      const regime: RegimeData["regime"] =
+        fg.value > 60 ? "bull" : fg.value < 40 ? "bear" : "sideways";
+
+      set({
+        prices,
+        account: engine.getAccount(),
+        equityHistory: engine.getEquityHistory(),
+        regime: { regime, fearGreed: fg.value, btcDominance: bd },
+      });
+    } catch (e) {
+      set({ error: "가격 데이터 로딩 실패" });
+    }
+  },
+
+  initialize: async () => {
+    set({ loading: true, error: null });
+    try {
+      const [prices, fg, fgHistory, globalData, btcChart] = await Promise.all([
+        fetchPrices(),
+        fetchFearGreed(),
+        fetchFearGreedHistory(),
+        fetchGlobalData(),
+        fetchMarketChart("bitcoin", 90),
+      ]);
+
+      const priceMap: Record<string, number> = {};
+      for (const p of prices) priceMap[p.symbol] = p.price;
+      engine.updatePrices(priceMap);
+      engine.snapshotEquity();
+
+      const regime: RegimeData["regime"] =
+        fg.value > 60 ? "bull" : fg.value < 40 ? "bear" : "sideways";
+
+      set({
+        prices,
+        fearGreed: fg,
+        fearGreedHistory: fgHistory,
+        btcDominance: globalData.btc_dominance,
+        totalMarketCap: globalData.total_market_cap,
+        btcChart,
+        account: engine.getAccount(),
+        equityHistory: engine.getEquityHistory(),
+        regime: {
+          regime,
+          fearGreed: fg.value,
+          btcDominance: globalData.btc_dominance,
+        },
+        loading: false,
+      });
+
+      // Auto-refresh prices every 30s
+      if (priceInterval) clearInterval(priceInterval);
+      priceInterval = setInterval(() => get().refreshPrices(), 30_000);
+
+      // Auto-refresh F&G every 5 min
+      if (fngInterval) clearInterval(fngInterval);
+      fngInterval = setInterval(async () => {
+        try {
+          const [fg2, fgH2, gd2] = await Promise.all([
+            fetchFearGreed(),
+            fetchFearGreedHistory(),
+            fetchGlobalData(),
+          ]);
+          const r: RegimeData["regime"] =
+            fg2.value > 60 ? "bull" : fg2.value < 40 ? "bear" : "sideways";
+          set({
+            fearGreed: fg2,
+            fearGreedHistory: fgH2,
+            btcDominance: gd2.btc_dominance,
+            totalMarketCap: gd2.total_market_cap,
+            regime: {
+              regime: r,
+              fearGreed: fg2.value,
+              btcDominance: gd2.btc_dominance,
+            },
+          });
+        } catch {}
+      }, 300_000);
+    } catch (e) {
+      set({
+        loading: false,
+        error:
+          "데이터를 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+      });
+    }
+  },
 }));
