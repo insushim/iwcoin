@@ -15,7 +15,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "IWCoin Trading Dashboard",
-  description: "Crypto trading bot dashboard",
+  description: "AI Auto Trading Dashboard - CryptoNexus Ultra v2.0",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

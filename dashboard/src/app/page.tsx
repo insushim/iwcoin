@@ -55,7 +55,7 @@ export default function DashboardPage() {
       {/* Bottom row */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Active strategies */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+        <div className="rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 p-5">
           <h3 className="mb-4 text-sm font-medium text-zinc-400">
             Active Strategies
           </h3>
@@ -83,7 +83,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Recent trades */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 lg:col-span-2">
+        <div className="rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 p-5 lg:col-span-2">
           <h3 className="mb-4 text-sm font-medium text-zinc-400">
             Recent Trades
           </h3>

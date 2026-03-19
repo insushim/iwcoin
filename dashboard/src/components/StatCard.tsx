@@ -24,14 +24,33 @@ export default function StatCard({
         ? "text-red-400"
         : "text-zinc-400";
 
+  const borderGlow =
+    trend === "up"
+      ? "border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.08)]"
+      : trend === "down"
+        ? "border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.08)]"
+        : "border-zinc-800/80";
+
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 backdrop-blur">
+    <div
+      className={`rounded-2xl border bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 p-5 backdrop-blur ${borderGlow}`}
+    >
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-zinc-400">{title}</p>
-        {icon && <div className="text-zinc-500">{icon}</div>}
+        <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+          {title}
+        </p>
+        {icon && (
+          <div className="rounded-lg bg-zinc-800/60 p-2 text-zinc-400">
+            {icon}
+          </div>
+        )}
       </div>
-      <p className={`mt-2 text-2xl font-bold ${trendColor}`}>{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-zinc-500">{subtitle}</p>}
+      <p className={`mt-3 text-3xl font-bold tracking-tight ${trendColor}`}>
+        {value}
+      </p>
+      {subtitle && (
+        <p className={`mt-1 text-sm font-medium ${trendColor}`}>{subtitle}</p>
+      )}
     </div>
   );
 }
