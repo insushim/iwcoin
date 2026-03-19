@@ -14,13 +14,13 @@ export default function TradeTable({ trades, compact }: Props) {
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b border-zinc-800 text-xs uppercase tracking-wider text-zinc-500">
-            <th className="px-3 py-3">Symbol</th>
-            <th className="px-3 py-3">Side</th>
-            <th className="px-3 py-3">Strategy</th>
-            <th className="px-3 py-3 text-right">Entry</th>
-            <th className="px-3 py-3 text-right">Exit</th>
-            <th className="px-3 py-3 text-right">P/L</th>
-            {!compact && <th className="px-3 py-3">Closed</th>}
+            <th className="px-3 py-3">종목</th>
+            <th className="px-3 py-3">방향</th>
+            <th className="px-3 py-3">전략</th>
+            <th className="px-3 py-3 text-right">진입가</th>
+            <th className="px-3 py-3 text-right">청산가</th>
+            <th className="px-3 py-3 text-right">손익</th>
+            {!compact && <th className="px-3 py-3">청산시간</th>}
           </tr>
         </thead>
         <tbody>
@@ -36,15 +36,17 @@ export default function TradeTable({ trades, compact }: Props) {
                 <span
                   className={`rounded px-1.5 py-0.5 text-xs font-semibold ${t.side === "long" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}
                 >
-                  {t.side.toUpperCase()}
+                  {t.side === "long" ? "롱" : "숏"}
                 </span>
               </td>
               <td className="px-3 py-2.5 text-zinc-400">{t.strategy}</td>
               <td className="px-3 py-2.5 text-right text-zinc-300">
-                ${t.entry_price.toLocaleString()}
+                ${t.entry_price.toLocaleString("en-US")}
               </td>
               <td className="px-3 py-2.5 text-right text-zinc-300">
-                {t.exit_price ? `$${t.exit_price.toLocaleString()}` : "—"}
+                {t.exit_price
+                  ? `$${t.exit_price.toLocaleString("en-US")}`
+                  : "—"}
               </td>
               <td
                 className={`px-3 py-2.5 text-right font-semibold ${(t.pnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}
@@ -54,7 +56,7 @@ export default function TradeTable({ trades, compact }: Props) {
               {!compact && (
                 <td className="px-3 py-2.5 text-zinc-500">
                   {t.closed_at
-                    ? format(new Date(t.closed_at), "MMM dd, HH:mm")
+                    ? format(new Date(t.closed_at), "MM/dd HH:mm")
                     : "—"}
                 </td>
               )}

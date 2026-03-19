@@ -9,19 +9,19 @@ interface Props {
 
 const regimeConfig = {
   bull: {
-    label: "BULLISH",
+    label: "상승장",
     color: "bg-emerald-500",
     textColor: "text-emerald-400",
     ring: "ring-emerald-500/30",
   },
   bear: {
-    label: "BEARISH",
+    label: "하락장",
     color: "bg-red-500",
     textColor: "text-red-400",
     ring: "ring-red-500/30",
   },
   sideways: {
-    label: "SIDEWAYS",
+    label: "횡보장",
     color: "bg-yellow-500",
     textColor: "text-yellow-400",
     ring: "ring-yellow-500/30",
@@ -44,7 +44,7 @@ export default function RegimeIndicator({ regime, fearGreed }: Props) {
         </span>
       </div>
       <div className="text-sm text-zinc-400">
-        Fear &amp; Greed:{" "}
+        공포·탐욕:{" "}
         <span className="font-semibold text-zinc-200">{fearGreed}</span>
       </div>
     </div>

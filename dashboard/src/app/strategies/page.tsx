@@ -1,23 +1,27 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useDashboardStore } from "@/lib/store";
-import { TrendingUp, Pause, Play } from "lucide-react";
+import { Pause, Play } from "lucide-react";
 
 export default function StrategiesPage() {
   const { strategies } = useDashboardStore();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Strategies</h1>
+      <h1 className="text-2xl font-bold">전략 관리</h1>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
         {strategies.map((s) => (
           <div
             key={s.id}
-            className={`rounded-xl border bg-zinc-900/60 p-5 transition-colors ${
+            className={`rounded-2xl border bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 p-5 transition-colors ${
               s.status === "active"
-                ? "border-zinc-700"
-                : "border-zinc-800 opacity-70"
+                ? "border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.06)]"
+                : "border-zinc-800/80 opacity-70"
             }`}
           >
             <div className="flex items-start justify-between">
@@ -39,42 +43,42 @@ export default function StrategiesPage() {
                 ) : (
                   <Pause size={12} />
                 )}
-                {s.status.toUpperCase()}
+                {s.status === "active" ? "활성" : "일시정지"}
               </span>
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-zinc-500">Win Rate</p>
+                <p className="text-xs text-zinc-500">승률</p>
                 <p className="text-lg font-bold text-zinc-200">{s.win_rate}%</p>
               </div>
               <div>
-                <p className="text-xs text-zinc-500">Total P/L</p>
+                <p className="text-xs text-zinc-500">총 손익</p>
                 <p
                   className={`text-lg font-bold ${s.total_pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}
                 >
-                  {s.total_pnl >= 0 ? "+" : ""}${s.total_pnl.toLocaleString()}
+                  {s.total_pnl >= 0 ? "+" : ""}$
+                  {s.total_pnl.toLocaleString("en-US")}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-zinc-500">Sharpe Ratio</p>
+                <p className="text-xs text-zinc-500">샤프 비율</p>
                 <p className="text-lg font-bold text-zinc-200">
                   {s.sharpe_ratio.toFixed(2)}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-zinc-500">Total Trades</p>
+                <p className="text-xs text-zinc-500">총 거래</p>
                 <p className="text-lg font-bold text-zinc-200">
                   {s.total_trades}
                 </p>
               </div>
             </div>
 
-            {/* Win rate bar */}
             <div className="mt-4">
               <div className="flex justify-between text-xs text-zinc-500">
-                <span>Performance</span>
-                <span>{s.allocation_pct}% allocation</span>
+                <span>성과</span>
+                <span>배분 {s.allocation_pct}%</span>
               </div>
               <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
                 <div

@@ -1,29 +1,33 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { useDashboardStore } from "@/lib/store";
 
 export default function PositionsPage() {
   const { positions } = useDashboardStore();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Open Positions</h1>
+      <h1 className="text-2xl font-bold">오픈 포지션</h1>
 
-      <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/60">
+      <div className="overflow-x-auto rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900/80 to-zinc-900/40">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">Symbol</th>
-              <th className="px-4 py-3">Side</th>
-              <th className="px-4 py-3">Strategy</th>
-              <th className="px-4 py-3 text-right">Entry</th>
-              <th className="px-4 py-3 text-right">Current</th>
-              <th className="px-4 py-3 text-right">Qty</th>
-              <th className="px-4 py-3 text-right">Unrealized P/L</th>
-              <th className="px-4 py-3 text-right">Stop Loss</th>
-              <th className="px-4 py-3 text-right">Take Profit</th>
-              <th className="px-4 py-3">Opened</th>
+              <th className="px-4 py-3">종목</th>
+              <th className="px-4 py-3">방향</th>
+              <th className="px-4 py-3">전략</th>
+              <th className="px-4 py-3 text-right">진입가</th>
+              <th className="px-4 py-3 text-right">현재가</th>
+              <th className="px-4 py-3 text-right">수량</th>
+              <th className="px-4 py-3 text-right">미실현 손익</th>
+              <th className="px-4 py-3 text-right">손절가</th>
+              <th className="px-4 py-3 text-right">익절가</th>
+              <th className="px-4 py-3">진입시간</th>
             </tr>
           </thead>
           <tbody>
@@ -44,15 +48,15 @@ export default function PositionsPage() {
                     <span
                       className={`rounded px-2 py-0.5 text-xs font-semibold ${p.side === "long" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}
                     >
-                      {p.side.toUpperCase()}
+                      {p.side === "long" ? "롱" : "숏"}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-zinc-400">{p.strategy}</td>
                   <td className="px-4 py-3 text-right text-zinc-300">
-                    ${p.entry_price.toLocaleString()}
+                    ${p.entry_price.toLocaleString("en-US")}
                   </td>
                   <td className="px-4 py-3 text-right text-zinc-200">
-                    ${p.current_price.toLocaleString()}
+                    ${p.current_price.toLocaleString("en-US")}
                   </td>
                   <td className="px-4 py-3 text-right text-zinc-300">
                     {p.quantity}
@@ -68,13 +72,13 @@ export default function PositionsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right text-orange-400">
-                    ${p.stop_loss.toLocaleString()}
+                    ${p.stop_loss.toLocaleString("en-US")}
                   </td>
                   <td className="px-4 py-3 text-right text-cyan-400">
-                    ${p.take_profit.toLocaleString()}
+                    ${p.take_profit.toLocaleString("en-US")}
                   </td>
                   <td className="px-4 py-3 text-zinc-500">
-                    {format(new Date(p.opened_at), "MMM dd, HH:mm")}
+                    {format(new Date(p.opened_at), "MM/dd HH:mm")}
                   </td>
                 </tr>
               );

@@ -5,13 +5,12 @@ import { Settings } from "lucide-react";
 export default function SettingsPage() {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Settings</h1>
+      <h1 className="text-2xl font-bold">설정</h1>
 
       <div className="max-w-2xl space-y-6">
-        {/* Supabase */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+        <div className="rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 p-5">
           <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-300">
-            <Settings size={16} /> Database Connection
+            <Settings size={16} /> 데이터베이스 연결
           </h3>
           <div className="mt-4 space-y-3">
             <div>
@@ -37,30 +36,29 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Notifications */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
-          <h3 className="text-sm font-medium text-zinc-300">Notifications</h3>
+        <div className="rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 p-5">
+          <h3 className="text-sm font-medium text-zinc-300">알림 설정</h3>
           <div className="mt-4 space-y-3">
-            {[
-              "Trade Opened",
-              "Trade Closed",
-              "Regime Change",
-              "Daily Summary",
-            ].map((label) => (
-              <label key={label} className="flex items-center justify-between">
-                <span className="text-sm text-zinc-400">{label}</span>
-                <input
-                  type="checkbox"
-                  defaultChecked
-                  className="h-4 w-4 rounded accent-emerald-500"
-                />
-              </label>
-            ))}
+            {["거래 진입", "거래 청산", "레짐 변경", "일일 리포트"].map(
+              (label) => (
+                <label
+                  key={label}
+                  className="flex items-center justify-between"
+                >
+                  <span className="text-sm text-zinc-400">{label}</span>
+                  <input
+                    type="checkbox"
+                    defaultChecked
+                    className="h-4 w-4 rounded accent-emerald-500"
+                  />
+                </label>
+              ),
+            )}
           </div>
         </div>
 
         <button className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 transition-colors">
-          Save Settings
+          설정 저장
         </button>
       </div>
     </div>
