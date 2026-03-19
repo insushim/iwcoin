@@ -1,0 +1,30 @@
+# Python
+engine/venv/
+__pycache__/
+*.pyc
+*.pyo
+engine/ml/models/*.pkl
+engine/ml/models/*.joblib
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Node
+node_modules/
+.next/
+out/
+.vercel
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cloudflare
+.wrangler/
+.dev.vars
