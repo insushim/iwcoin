@@ -61,6 +61,26 @@ const strategies = [
     description: "RSI 70 이상 과매수 구간에서 매도 신호",
   },
   {
+    id: "ema_ribbon",
+    name: "EMA 리본",
+    description: "EMA 8/13/21/55 정렬로 강한 추세 확인",
+  },
+  {
+    id: "momentum",
+    name: "모멘텀 돌파",
+    description: "20봉 고점/저점 돌파 + 거래량 필터",
+  },
+  {
+    id: "rsi_bb",
+    name: "RSI+BB 복합",
+    description: "RSI와 볼린저밴드 동시 확인으로 고확률 진입",
+  },
+  {
+    id: "sector_rotation",
+    name: "섹터 로테이션",
+    description: "시장 레짐에 따라 유리한 섹터 코인에 집중",
+  },
+  {
     id: "manual",
     name: "수동 매매",
     description: "사용자가 직접 진입/청산하는 수동 전략",

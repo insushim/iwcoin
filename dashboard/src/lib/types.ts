@@ -66,9 +66,9 @@ export interface TradingSettings {
 export const DEFAULT_SETTINGS: TradingSettings = {
   fee_rate: 0.001,
   slippage_rate: 0.0005,
-  max_position_pct: 0.2,
-  max_positions: 5,
-  max_drawdown_pct: 0.15,
+  max_position_pct: 0.15,
+  max_positions: 10,
+  max_drawdown_pct: 0.2,
 };
 
 export interface PerformanceStats {
@@ -104,11 +104,23 @@ export interface RegimeData {
 }
 
 export const COINS = [
-  { symbol: "BTC/USDT", coingeckoId: "bitcoin" },
-  { symbol: "ETH/USDT", coingeckoId: "ethereum" },
-  { symbol: "SOL/USDT", coingeckoId: "solana" },
-  { symbol: "AVAX/USDT", coingeckoId: "avalanche-2" },
-  { symbol: "ARB/USDT", coingeckoId: "arbitrum" },
+  // Large cap - 안정적
+  { symbol: "BTC/USDT", coingeckoId: "bitcoin", sector: "store-of-value" },
+  { symbol: "ETH/USDT", coingeckoId: "ethereum", sector: "smart-contract" },
+  { symbol: "BNB/USDT", coingeckoId: "binancecoin", sector: "exchange" },
+  // Mid cap - Layer 1
+  { symbol: "SOL/USDT", coingeckoId: "solana", sector: "smart-contract" },
+  { symbol: "ADA/USDT", coingeckoId: "cardano", sector: "smart-contract" },
+  { symbol: "AVAX/USDT", coingeckoId: "avalanche-2", sector: "smart-contract" },
+  // DeFi
+  { symbol: "LINK/USDT", coingeckoId: "chainlink", sector: "defi" },
+  { symbol: "UNI/USDT", coingeckoId: "uniswap", sector: "defi" },
+  // Layer 2
+  { symbol: "ARB/USDT", coingeckoId: "arbitrum", sector: "layer2" },
+  { symbol: "OP/USDT", coingeckoId: "optimism", sector: "layer2" },
+  // Meme/High vol - 변동성 높은 코인
+  { symbol: "DOGE/USDT", coingeckoId: "dogecoin", sector: "meme" },
+  { symbol: "XRP/USDT", coingeckoId: "ripple", sector: "payment" },
 ] as const;
 
 export function symbolToId(symbol: string): string {
