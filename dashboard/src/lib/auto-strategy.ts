@@ -227,7 +227,7 @@ export class AutoStrategyRunner {
       (sum, p) => sum + p.quantity,
       0,
     );
-    if (totalExposure >= account.initial_balance * 0.8) return false;
+    if (totalExposure >= account.initial_balance * 0.93) return false;
 
     // Already have position in this symbol WITH THIS STRATEGY?
     // (DCA strategy is exempt from this check - it's handled separately)

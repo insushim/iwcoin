@@ -69,7 +69,7 @@ export interface TradingSettings {
 export const DEFAULT_SETTINGS: TradingSettings = {
   fee_rate: 0.001,
   slippage_rate: 0.0005,
-  max_position_pct: 0.12, // smaller per position for more diversification
+  max_position_pct: 0.07, // ~$700 per position for max diversification
   max_positions: 15, // more positions for spread
   max_drawdown_pct: 0.2,
 };
