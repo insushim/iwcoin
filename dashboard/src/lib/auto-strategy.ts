@@ -29,6 +29,30 @@ interface InternalSignal {
   sector: string;
 }
 
+// ── Correlation groups for diversification ──────────────────────────
+const CORRELATED_GROUPS: string[][] = [
+  ["BTC/USDT"], // BTC moves alone
+  [
+    "ETH/USDT",
+    "SOL/USDT",
+    "ADA/USDT",
+    "AVAX/USDT",
+    "DOT/USDT",
+    "NEAR/USDT",
+    "SUI/USDT",
+  ], // L1s move together
+  ["ARB/USDT", "OP/USDT", "MATIC/USDT"], // L2s
+  ["LINK/USDT", "UNI/USDT", "AAVE/USDT"], // DeFi
+  ["FET/USDT", "RENDER/USDT"], // AI
+  ["DOGE/USDT"], // Meme
+  ["XRP/USDT", "XLM/USDT"], // Payment
+  ["BNB/USDT"], // Exchange
+];
+
+function getCorrelationGroup(symbol: string): string[] | undefined {
+  return CORRELATED_GROUPS.find((g) => g.includes(symbol));
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 function ema(data: number[], period: number): number[] {
   const k = 2 / (period + 1);
@@ -67,6 +91,32 @@ function computeRSI(history: number[]): number {
       : 0.001;
   const rs = avgGain / avgLoss;
   return 100 - 100 / (1 + rs);
+}
+
+function computeATR(history: number[], period: number = 14): number {
+  if (history.length < period + 1) return 0;
+  let sum = 0;
+  for (let i = history.length - period; i < history.length; i++) {
+    sum += Math.abs(history[i] - history[i - 1]);
+  }
+  return sum / period;
+}
+
+// ── Volatility-adjusted SL/TP ───────────────────────────────────────
+function adjustSlTp(
+  baseSlPct: number,
+  baseTpPct: number,
+  history: number[],
+  currentPrice: number,
+): { slPct: number; tpPct: number } {
+  const atr = computeATR(history);
+  if (atr === 0 || currentPrice === 0) {
+    return { slPct: baseSlPct, tpPct: baseTpPct };
+  }
+  const atrPct = atr / currentPrice;
+  const slPct = Math.min(0.06, baseSlPct * (1 + atrPct));
+  const tpPct = Math.min(0.15, baseTpPct * (1 + atrPct));
+  return { slPct, tpPct };
 }
 
 // ── Main class ──────────────────────────────────────────────────────
@@ -132,30 +182,37 @@ export class AutoStrategyRunner {
     }, 300_000);
   }
 
-  // ── Dynamic position size based on confidence ─────────────────────
-  private getPositionSize(confidence: number, balance: number): number {
+  // ── Dynamic position size based on confidence + equity ────────────
+  private getPositionSize(confidence: number): number {
+    const account = this.engine.getAccount();
+    // Profit reinvestment: use current equity instead of initial balance
+    const equity =
+      account.balance + account.positions.reduce((s, p) => s + p.quantity, 0);
+
     let pctMultiplier: number;
     if (confidence < 60) pctMultiplier = 0.5;
     else if (confidence <= 75) pctMultiplier = 0.75;
     else pctMultiplier = 1.0;
 
-    const posSize = balance * this.settings.max_position_pct * pctMultiplier;
+    const posSize = equity * this.settings.max_position_pct * pctMultiplier;
     return Math.min(posSize, 2000);
   }
 
-  // ── Diversification checks ────────────────────────────────────────
+  // ── Correlation-aware diversification ─────────────────────────────
   private canOpenPosition(signal: InternalSignal): boolean {
     const account = this.engine.getAccount();
 
     // Max positions
     if (account.positions.length >= this.settings.max_positions) return false;
 
-    // No more than 4 positions in the same sector
-    const sectorCount = account.positions.filter((p) => {
-      const coin = COINS.find((c) => c.symbol === p.symbol);
-      return coin && coin.sector === signal.sector;
-    }).length;
-    if (sectorCount >= 4) return false;
+    // No more than 3 positions in the same correlation group
+    const group = getCorrelationGroup(signal.symbol);
+    if (group) {
+      const groupCount = account.positions.filter((p) =>
+        group.includes(p.symbol),
+      ).length;
+      if (groupCount >= 3) return false;
+    }
 
     // No more than 3 positions using the same strategy
     const strategyCount = account.positions.filter(
@@ -171,12 +228,15 @@ export class AutoStrategyRunner {
     if (totalExposure >= account.initial_balance * 0.8) return false;
 
     // Already have position in this symbol WITH THIS STRATEGY?
-    if (
-      account.positions.some(
-        (p) => p.symbol === signal.symbol && p.strategy === signal.strategy,
+    // (DCA strategy is exempt from this check - it's handled separately)
+    if (signal.strategy !== "DCA 분할매수") {
+      if (
+        account.positions.some(
+          (p) => p.symbol === signal.symbol && p.strategy === signal.strategy,
+        )
       )
-    )
-      return false;
+        return false;
+    }
 
     return true;
   }
@@ -204,7 +264,6 @@ export class AutoStrategyRunner {
 
     const account = this.engine.getAccount();
     const availableBalance = account.balance;
-    if (availableBalance < 100) return;
 
     const regime = this.getRegimeFn ? this.getRegimeFn() : null;
 
@@ -218,9 +277,9 @@ export class AutoStrategyRunner {
       const price = priceMap[coin.symbol];
       if (!price) continue;
 
-      // Don't trade same symbol too frequently (90s cooldown)
+      // Don't trade same symbol too frequently (60s cooldown)
       const lastTime = this.lastTradeTime[coin.symbol] || 0;
-      if (Date.now() - lastTime < 90_000) continue;
+      if (Date.now() - lastTime < 60_000) continue;
 
       const coinPrice = coinPriceMap[coin.symbol];
       const signals = this.getAllSignals(
@@ -234,6 +293,10 @@ export class AutoStrategyRunner {
       allSignals.push(...signals);
     }
 
+    // Check DCA opportunities on existing losing positions
+    const dcaSignals = this.getDCASignals(priceMap, regime);
+    allSignals.push(...dcaSignals);
+
     // Sort by confidence descending - pick best signals first
     allSignals.sort((a, b) => b.confidence - a.confidence);
 
@@ -245,7 +308,7 @@ export class AutoStrategyRunner {
       const price = priceMap[signal.symbol];
       if (!price) continue;
 
-      // Record signal for UI
+      // Record signal for UI (always, even if we can't open)
       this.addSignal({
         strategy: signal.strategy,
         symbol: signal.symbol,
@@ -255,7 +318,9 @@ export class AutoStrategyRunner {
         timestamp: Date.now(),
       });
 
-      const posSize = this.getPositionSize(signal.confidence, availableBalance);
+      if (availableBalance < 100) continue;
+
+      const posSize = this.getPositionSize(signal.confidence);
 
       const sl =
         signal.side === "long"
@@ -283,6 +348,61 @@ export class AutoStrategyRunner {
     this.engine.snapshotEquity();
   }
 
+  // ── DCA: Dollar Cost Averaging for losing positions ───────────────
+  private getDCASignals(
+    priceMap: Record<string, number>,
+    regime: RegimeData | null,
+  ): InternalSignal[] {
+    const account = this.engine.getAccount();
+    const signals: InternalSignal[] = [];
+
+    for (const pos of account.positions) {
+      const currentPrice = priceMap[pos.symbol];
+      if (!currentPrice) continue;
+
+      // Calculate unrealized PnL %
+      let pnlPct: number;
+      if (pos.side === "long") {
+        pnlPct = (currentPrice - pos.entry_price) / pos.entry_price;
+      } else {
+        pnlPct = (pos.entry_price - currentPrice) / pos.entry_price;
+      }
+
+      // Only DCA when position is losing between -1% and -3%
+      if (pnlPct < -0.01 && pnlPct > -0.03) {
+        // Max 2 positions in same symbol same direction (original + 1 DCA)
+        const sameSymbolSideCount = account.positions.filter(
+          (p) => p.symbol === pos.symbol && p.side === pos.side,
+        ).length;
+        if (sameSymbolSideCount >= 2) continue;
+
+        // Don't DCA against the regime
+        if (pos.side === "long" && regime?.regime === "bear") continue;
+        if (pos.side === "short" && regime?.regime === "bull") continue;
+
+        const coin = COINS.find((c) => c.symbol === pos.symbol);
+        const sector = coin?.sector ?? "";
+        const history = this.priceHistory[pos.symbol];
+        const { slPct, tpPct } = history
+          ? adjustSlTp(0.03, 0.05, history, currentPrice)
+          : { slPct: 0.03, tpPct: 0.05 };
+
+        signals.push({
+          symbol: pos.symbol,
+          side: pos.side,
+          strategy: "DCA 분할매수",
+          confidence: 70,
+          reason: `기존 포지션 ${(pnlPct * 100).toFixed(1)}% 손실 중, 평단가 개선 분할매수`,
+          slPct,
+          tpPct,
+          sector,
+        });
+      }
+    }
+
+    return signals;
+  }
+
   // ── Collect ALL signals for a coin, return sorted by confidence ────
   private getAllSignals(
     symbol: string,
@@ -299,6 +419,7 @@ export class AutoStrategyRunner {
       const change = coinPrice.change24h;
       // Strong movers: if 24h change > 3%, ride the momentum
       if (change > 3 && regime?.regime !== "bear") {
+        const { slPct, tpPct } = adjustSlTp(0.03, 0.1, history, currentPrice);
         signals.push({
           symbol,
           sector,
@@ -306,11 +427,12 @@ export class AutoStrategyRunner {
           strategy: "모멘텀 돌파",
           confidence: Math.min(70, 55 + change),
           reason: `24h +${change.toFixed(1)}% 강한 상승 모멘텀`,
-          slPct: 0.03,
-          tpPct: 0.1,
+          slPct,
+          tpPct,
         });
       }
       if (change < -3 && regime?.regime !== "bull") {
+        const { slPct, tpPct } = adjustSlTp(0.03, 0.1, history, currentPrice);
         signals.push({
           symbol,
           sector,
@@ -318,12 +440,13 @@ export class AutoStrategyRunner {
           strategy: "모멘텀 돌파",
           confidence: Math.min(70, 55 + Math.abs(change)),
           reason: `24h ${change.toFixed(1)}% 강한 하락 모멘텀`,
-          slPct: 0.03,
-          tpPct: 0.1,
+          slPct,
+          tpPct,
         });
       }
       // Mean reversion: if 24h change > 5%, expect pullback
       if (change > 5 && regime?.regime !== "bull") {
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({
           symbol,
           sector,
@@ -331,11 +454,12 @@ export class AutoStrategyRunner {
           strategy: "RSI+BB 복합",
           confidence: Math.min(75, 60 + change * 0.5),
           reason: `24h +${change.toFixed(1)}% 과열, 조정 기대`,
-          slPct: 0.02,
-          tpPct: 0.04,
+          slPct,
+          tpPct,
         });
       }
       if (change < -5 && regime?.regime !== "bear") {
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({
           symbol,
           sector,
@@ -343,8 +467,8 @@ export class AutoStrategyRunner {
           strategy: "RSI+BB 복합",
           confidence: Math.min(75, 60 + Math.abs(change) * 0.5),
           reason: `24h ${change.toFixed(1)}% 과매도, 반등 기대`,
-          slPct: 0.02,
-          tpPct: 0.04,
+          slPct,
+          tpPct,
         });
       }
     }
@@ -358,16 +482,22 @@ export class AutoStrategyRunner {
         currentPrice,
         regime,
       );
-      if (r) signals.push({ ...r, symbol, sector, slPct: 0.03, tpPct: 0.06 });
+      if (r) {
+        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        signals.push({ ...r, symbol, sector, slPct, tpPct });
+      }
     }
 
     // Regime-Aware Composite
     if (regime && history.length >= 30) {
       const r = this.regimeStrategy(symbol, history, currentPrice, regime);
-      if (r) signals.push({ ...r, symbol, sector, slPct: 0.03, tpPct: 0.06 });
+      if (r) {
+        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        signals.push({ ...r, symbol, sector, slPct, tpPct });
+      }
     }
 
-    // Sector Rotation
+    // Sector Rotation (longer history)
     if (regime && history.length >= 14) {
       const r = this.sectorRotationStrategy(
         symbol,
@@ -376,19 +506,28 @@ export class AutoStrategyRunner {
         currentPrice,
         regime,
       );
-      if (r) signals.push({ ...r, symbol, sector, slPct: 0.03, tpPct: 0.06 });
+      if (r) {
+        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        signals.push({ ...r, symbol, sector, slPct, tpPct });
+      }
     }
 
     // MACD Cross (trend following)
     if (history.length >= 30) {
       const r = this.macdStrategy(history, regime);
-      if (r) signals.push({ ...r, symbol, sector, slPct: 0.04, tpPct: 0.08 });
+      if (r) {
+        const { slPct, tpPct } = adjustSlTp(0.04, 0.08, history, currentPrice);
+        signals.push({ ...r, symbol, sector, slPct, tpPct });
+      }
     }
 
     // EMA Ribbon (trend following)
     if (history.length >= 55) {
       const r = this.emaRibbonStrategy(history, currentPrice, regime);
-      if (r) signals.push({ ...r, symbol, sector, slPct: 0.04, tpPct: 0.08 });
+      if (r) {
+        const { slPct, tpPct } = adjustSlTp(0.04, 0.08, history, currentPrice);
+        signals.push({ ...r, symbol, sector, slPct, tpPct });
+      }
     }
 
     // Momentum Breakout
@@ -399,19 +538,28 @@ export class AutoStrategyRunner {
         coinPrice,
         regime,
       );
-      if (r) signals.push({ ...r, symbol, sector, slPct: 0.03, tpPct: 0.1 });
+      if (r) {
+        const { slPct, tpPct } = adjustSlTp(0.03, 0.1, history, currentPrice);
+        signals.push({ ...r, symbol, sector, slPct, tpPct });
+      }
     }
 
     // RSI+BB Convergence (mean reversion)
     if (history.length >= 20) {
       const r = this.rsiBBStrategy(history, currentPrice, regime);
-      if (r) signals.push({ ...r, symbol, sector, slPct: 0.02, tpPct: 0.04 });
+      if (r) {
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
+        signals.push({ ...r, symbol, sector, slPct, tpPct });
+      }
     }
 
     // Bollinger Bands (mean reversion)
     if (history.length >= 20) {
       const r = this.bollingerStrategy(history, currentPrice, regime);
-      if (r) signals.push({ ...r, symbol, sector, slPct: 0.02, tpPct: 0.04 });
+      if (r) {
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
+        signals.push({ ...r, symbol, sector, slPct, tpPct });
+      }
     }
 
     // SMA Crossover (trend following)
@@ -421,6 +569,12 @@ export class AutoStrategyRunner {
 
       if (currentPrice > sma5 && sma5 > sma10) {
         if (regime?.regime !== "bear") {
+          const { slPct, tpPct } = adjustSlTp(
+            0.04,
+            0.08,
+            history,
+            currentPrice,
+          );
           signals.push({
             symbol,
             sector,
@@ -428,13 +582,19 @@ export class AutoStrategyRunner {
             strategy: "SMA 크로스오버",
             confidence: 55,
             reason: `SMA5(${sma5.toFixed(1)}) > SMA10(${sma10.toFixed(1)}), 상승 추세`,
-            slPct: 0.04,
-            tpPct: 0.08,
+            slPct,
+            tpPct,
           });
         }
       }
       if (currentPrice < sma5 && sma5 < sma10) {
         if (regime?.regime !== "bull") {
+          const { slPct, tpPct } = adjustSlTp(
+            0.04,
+            0.08,
+            history,
+            currentPrice,
+          );
           signals.push({
             symbol,
             sector,
@@ -442,8 +602,8 @@ export class AutoStrategyRunner {
             strategy: "SMA 크로스오버",
             confidence: 55,
             reason: `SMA5(${sma5.toFixed(1)}) < SMA10(${sma10.toFixed(1)}), 하락 추세`,
-            slPct: 0.04,
-            tpPct: 0.08,
+            slPct,
+            tpPct,
           });
         }
       }
@@ -454,6 +614,7 @@ export class AutoStrategyRunner {
       const rsi = computeRSI(history);
 
       if (rsi < 30 && regime?.regime !== "bear") {
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({
           symbol,
           sector,
@@ -461,11 +622,12 @@ export class AutoStrategyRunner {
           strategy: "RSI 과매도",
           confidence: 60,
           reason: `RSI ${rsi.toFixed(1)} < 30, 과매도 반등 기대`,
-          slPct: 0.02,
-          tpPct: 0.04,
+          slPct,
+          tpPct,
         });
       }
       if (rsi > 70 && regime?.regime !== "bull") {
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({
           symbol,
           sector,
@@ -473,8 +635,8 @@ export class AutoStrategyRunner {
           strategy: "RSI 과매수",
           confidence: 60,
           reason: `RSI ${rsi.toFixed(1)} > 70, 과매수 조정 기대`,
-          slPct: 0.02,
-          tpPct: 0.04,
+          slPct,
+          tpPct,
         });
       }
     }

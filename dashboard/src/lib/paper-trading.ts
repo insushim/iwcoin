@@ -140,6 +140,9 @@ export class PaperTradingEngine {
       opened_at: new Date().toISOString(),
       fee: entryFee,
       leverage,
+      trailing_stop: 0,
+      highest_price: params.entry_price,
+      lowest_price: params.entry_price,
     };
 
     this.account.balance -= totalCost;
@@ -221,6 +224,13 @@ export class PaperTradingEngine {
         pos.current_price = p;
         changed = true;
       }
+      if (p !== undefined) {
+        if (pos.side === "long") {
+          if (p > (pos.highest_price ?? pos.entry_price)) pos.highest_price = p;
+        } else {
+          if (p < (pos.lowest_price ?? pos.entry_price)) pos.lowest_price = p;
+        }
+      }
     }
     if (changed) save(this.account);
   }
@@ -232,6 +242,41 @@ export class PaperTradingEngine {
     for (const pos of this.account.positions) {
       const price = prices[pos.symbol];
       if (price === undefined) continue;
+
+      // Trailing stop: if price has moved 2% in profit direction, set trailing stop at 1.5% behind peak
+      const profitPct =
+        pos.side === "long"
+          ? (price - pos.entry_price) / pos.entry_price
+          : (pos.entry_price - price) / pos.entry_price;
+
+      if (profitPct > 0.02) {
+        // Activate trailing stop
+        if (pos.side === "long") {
+          const trailingPrice = (pos.highest_price ?? price) * 0.985; // 1.5% below peak
+          if (trailingPrice > pos.stop_loss) {
+            pos.trailing_stop = trailingPrice;
+          }
+          if (
+            price <= (pos.trailing_stop ?? 0) &&
+            (pos.trailing_stop ?? 0) > 0
+          ) {
+            toClose.push({ id: pos.id, price });
+            continue; // skip normal SL/TP check
+          }
+        } else {
+          const trailingPrice = (pos.lowest_price ?? price) * 1.015; // 1.5% above trough
+          if (trailingPrice < pos.stop_loss) {
+            pos.trailing_stop = trailingPrice;
+          }
+          if (
+            price >= (pos.trailing_stop ?? 0) &&
+            (pos.trailing_stop ?? 0) > 0
+          ) {
+            toClose.push({ id: pos.id, price });
+            continue;
+          }
+        }
+      }
 
       if (pos.side === "long") {
         if (price <= pos.stop_loss || price >= pos.take_profit) {

@@ -18,6 +18,9 @@ export interface PaperPosition {
   quantity: number;
   stop_loss: number;
   take_profit: number;
+  trailing_stop: number; // trailing stop price (0 = disabled)
+  highest_price: number; // highest price since entry (for trailing stop)
+  lowest_price: number; // lowest price since entry (for trailing stop)
   strategy: string;
   opened_at: string;
   fee: number; // entry fee paid
@@ -66,8 +69,8 @@ export interface TradingSettings {
 export const DEFAULT_SETTINGS: TradingSettings = {
   fee_rate: 0.001,
   slippage_rate: 0.0005,
-  max_position_pct: 0.15,
-  max_positions: 10,
+  max_position_pct: 0.12, // smaller per position for more diversification
+  max_positions: 15, // more positions for spread
   max_drawdown_pct: 0.2,
 };
 
@@ -112,15 +115,25 @@ export const COINS = [
   { symbol: "SOL/USDT", coingeckoId: "solana", sector: "smart-contract" },
   { symbol: "ADA/USDT", coingeckoId: "cardano", sector: "smart-contract" },
   { symbol: "AVAX/USDT", coingeckoId: "avalanche-2", sector: "smart-contract" },
+  { symbol: "DOT/USDT", coingeckoId: "polkadot", sector: "smart-contract" },
+  { symbol: "NEAR/USDT", coingeckoId: "near", sector: "smart-contract" },
+  { symbol: "SUI/USDT", coingeckoId: "sui", sector: "smart-contract" },
   // DeFi
   { symbol: "LINK/USDT", coingeckoId: "chainlink", sector: "defi" },
   { symbol: "UNI/USDT", coingeckoId: "uniswap", sector: "defi" },
+  { symbol: "AAVE/USDT", coingeckoId: "aave", sector: "defi" },
   // Layer 2
   { symbol: "ARB/USDT", coingeckoId: "arbitrum", sector: "layer2" },
   { symbol: "OP/USDT", coingeckoId: "optimism", sector: "layer2" },
-  // Meme/High vol - 변동성 높은 코인
+  { symbol: "MATIC/USDT", coingeckoId: "matic-network", sector: "layer2" },
+  // AI/Infra
+  { symbol: "FET/USDT", coingeckoId: "fetch-ai", sector: "ai" },
+  { symbol: "RENDER/USDT", coingeckoId: "render-token", sector: "ai" },
+  // Meme/High vol
   { symbol: "DOGE/USDT", coingeckoId: "dogecoin", sector: "meme" },
+  // Payment
   { symbol: "XRP/USDT", coingeckoId: "ripple", sector: "payment" },
+  { symbol: "XLM/USDT", coingeckoId: "stellar", sector: "payment" },
 ] as const;
 
 export function symbolToId(symbol: string): string {
