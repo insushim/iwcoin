@@ -44,6 +44,12 @@ interface DashboardStore {
   // Trading settings & performance
   tradingSettings: TradingSettings;
   performanceStats: PerformanceStats;
+  dailyPnl: {
+    realized: number;
+    unrealized: number;
+    total: number;
+    trades_today: number;
+  };
   recentSignals: StrategySignal[];
 
   // Actions
@@ -91,6 +97,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
 
   tradingSettings: engine.getSettings(),
   performanceStats: engine.getPerformanceStats(),
+  dailyPnl: engine.getDailyPnl(),
   recentSignals: [],
 
   regime: { regime: "sideways", fearGreed: 50, btcDominance: 0 },
@@ -183,6 +190,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         account: engine.getAccount(),
         equityHistory: engine.getEquityHistory(),
         performanceStats: engine.getPerformanceStats(),
+        dailyPnl: engine.getDailyPnl(),
         regime: { regime, fearGreed: fg.value, btcDominance: bd },
       };
 

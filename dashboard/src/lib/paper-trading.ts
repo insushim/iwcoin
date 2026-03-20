@@ -360,6 +360,174 @@ export class PaperTradingEngine {
   }
 
   /**
+   * Calculate today's realized + unrealized P&L.
+   */
+  getDailyPnl(): {
+    realized: number;
+    unrealized: number;
+    total: number;
+    trades_today: number;
+  } {
+    const today = new Date().toISOString().slice(0, 10);
+    const todayTrades = this.account.trade_history.filter((t) =>
+      t.closed_at.startsWith(today),
+    );
+    const realized = todayTrades.reduce((s, t) => s + (t.net_pnl ?? t.pnl), 0);
+
+    let unrealized = 0;
+    for (const pos of this.account.positions) {
+      unrealized += this.getUnrealizedPnl(pos);
+    }
+
+    return {
+      realized: +realized.toFixed(2),
+      unrealized: +unrealized.toFixed(2),
+      total: +(realized + unrealized).toFixed(2),
+      trades_today: todayTrades.length,
+    };
+  }
+
+  /**
+   * Returns true if today's total P&L loss exceeds the given limit percentage
+   * of initial balance. Used by strategy runner to halt trading.
+   */
+  isDailyLossExceeded(limitPct: number = 0.03): boolean {
+    const { total } = this.getDailyPnl();
+    const threshold = -limitPct * this.account.initial_balance;
+    return total < threshold;
+  }
+
+  /**
+   * Count consecutive losses for a symbol from the most recent trade backwards.
+   */
+  getConsecutiveLosses(symbol: string): number {
+    const symbolTrades = this.account.trade_history.filter(
+      (t) => t.symbol === symbol,
+    );
+    let count = 0;
+    for (let i = symbolTrades.length - 1; i >= 0; i--) {
+      const pnl = symbolTrades[i].net_pnl ?? symbolTrades[i].pnl;
+      if (pnl < 0) {
+        count++;
+      } else {
+        break;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Close a percentage (0-1) of a position. Returns the trade record for
+   * the closed portion; the remaining position stays open with reduced quantity.
+   */
+  partialClose(
+    positionId: string,
+    percentage: number,
+    exit_price: number,
+  ): PaperTrade | null {
+    if (percentage <= 0 || percentage > 1) return null;
+    if (percentage === 1) return this.closePosition(positionId, exit_price);
+
+    const idx = this.account.positions.findIndex((p) => p.id === positionId);
+    if (idx === -1) return null;
+
+    const pos = this.account.positions[idx];
+    const closedQuantity = pos.quantity * percentage;
+    const remainingQuantity = pos.quantity - closedQuantity;
+
+    const { fee_rate, slippage_rate } = this.settings;
+
+    // Apply slippage to exit price
+    const slippageMultiplier =
+      pos.side === "long" ? 1 - slippage_rate : 1 + slippage_rate;
+    const simulatedExit = exit_price * slippageMultiplier;
+
+    // Fees proportional to closed portion
+    const entryFee = (pos.fee ?? 0) * percentage;
+    const exitFee = closedQuantity * fee_rate;
+
+    // PnL for closed portion
+    const priceDiff =
+      pos.side === "long"
+        ? simulatedExit - pos.entry_price
+        : pos.entry_price - simulatedExit;
+    const sizeInUnits = closedQuantity / pos.entry_price;
+    const pnl = priceDiff * sizeInUnits;
+    const pnl_pct = (priceDiff / pos.entry_price) * 100;
+
+    const exitSlippage = Math.abs(exit_price - simulatedExit) * sizeInUnits;
+    const entrySlippageCost =
+      pos.entry_price !== 0
+        ? Math.abs(pos.entry_price * slippage_rate) * sizeInUnits
+        : 0;
+    const totalSlippage = entrySlippageCost + exitSlippage;
+
+    const netPnl = pnl - entryFee - exitFee;
+
+    const trade: PaperTrade = {
+      id: genId(),
+      symbol: pos.symbol,
+      side: pos.side,
+      entry_price: pos.entry_price,
+      exit_price: simulatedExit,
+      quantity: closedQuantity,
+      pnl: +pnl.toFixed(2),
+      pnl_pct: +pnl_pct.toFixed(2),
+      strategy: pos.strategy,
+      opened_at: pos.opened_at,
+      closed_at: new Date().toISOString(),
+      entry_fee: +entryFee.toFixed(4),
+      exit_fee: +exitFee.toFixed(4),
+      slippage: +totalSlippage.toFixed(4),
+      net_pnl: +netPnl.toFixed(2),
+    };
+
+    // Update remaining position
+    pos.quantity = remainingQuantity;
+    pos.fee = (pos.fee ?? 0) * (1 - percentage);
+
+    // Credit closed portion back to balance
+    this.account.balance += closedQuantity + pnl - exitFee;
+    this.account.trade_history.push(trade);
+    save(this.account);
+    return trade;
+  }
+
+  /**
+   * Get portfolio exposure statistics across all open positions.
+   */
+  getPortfolioExposure(): {
+    longExposure: number;
+    shortExposure: number;
+    netExposure: number;
+    longCount: number;
+    shortCount: number;
+  } {
+    let longExposure = 0;
+    let shortExposure = 0;
+    let longCount = 0;
+    let shortCount = 0;
+
+    for (const pos of this.account.positions) {
+      if (pos.side === "long") {
+        longExposure += pos.quantity;
+        longCount++;
+      } else {
+        shortExposure += pos.quantity;
+        shortCount++;
+      }
+    }
+
+    return {
+      longExposure: +longExposure.toFixed(2),
+      shortExposure: +shortExposure.toFixed(2),
+      netExposure: +(longExposure - shortExposure).toFixed(2),
+      longCount,
+      shortCount,
+    };
+  }
+
+  /**
    * Calculate comprehensive performance statistics from trade history.
    */
   getPerformanceStats(): PerformanceStats {

@@ -129,6 +129,7 @@ export class AutoStrategyRunner {
   private getRegimeFn: (() => RegimeData) | null = null;
   private recentSignals: StrategySignal[] = [];
   private activeStrategies: Set<string> = new Set();
+  private partialClosedIds: Set<string> = new Set();
 
   constructor(engine: PaperTradingEngine) {
     this.engine = engine;
@@ -241,6 +242,92 @@ export class AutoStrategyRunner {
     return true;
   }
 
+  // ── Adaptive confidence threshold based on market regime ────────
+  private getMinConfidence(regime: RegimeData | null): number {
+    if (!regime) return 50;
+    // In bear market, require higher confidence to enter
+    if (regime.regime === "bear") return 60;
+    // In extreme fear (F&G < 20), be more cautious
+    if (regime.fearGreed < 20) return 58;
+    // Normal conditions
+    return 50;
+  }
+
+  // ── Portfolio hedge protection ────────────────────────────────────
+  private checkHedgeNeed(
+    priceMap: Record<string, number>,
+    regime: RegimeData | null,
+  ): void {
+    const exposure = this.engine.getPortfolioExposure();
+    const account = this.engine.getAccount();
+    const equity =
+      account.balance + account.positions.reduce((s, p) => s + p.quantity, 0);
+
+    // If portfolio is heavily skewed to one side (>50% of equity), add hedge
+    const longPct = exposure.longExposure / equity;
+    const shortPct = exposure.shortExposure / equity;
+
+    // Too many longs, need a short hedge
+    if (longPct > 0.5 && exposure.longCount > 3 && shortPct < 0.15) {
+      const btcPrice = priceMap["BTC/USDT"];
+      if (
+        btcPrice &&
+        !account.positions.some(
+          (p) => p.symbol === "BTC/USDT" && p.side === "short",
+        )
+      ) {
+        const hedgeSize = Math.min(equity * 0.1, 1000); // 10% hedge
+        this.engine.openPosition({
+          symbol: "BTC/USDT",
+          side: "short",
+          quantity: hedgeSize,
+          entry_price: btcPrice,
+          stop_loss: +(btcPrice * 1.05).toFixed(2),
+          take_profit: +(btcPrice * 0.95).toFixed(2),
+          strategy: "헤지 보호",
+        });
+        this.addSignal({
+          strategy: "헤지 보호",
+          symbol: "BTC/USDT",
+          side: "short",
+          confidence: 80,
+          reason: `포트폴리오 롱 비중 ${(longPct * 100).toFixed(0)}% 과다, BTC 숏 헤지`,
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    // Too many shorts, need a long hedge
+    if (shortPct > 0.5 && exposure.shortCount > 3 && longPct < 0.15) {
+      const btcPrice = priceMap["BTC/USDT"];
+      if (
+        btcPrice &&
+        !account.positions.some(
+          (p) => p.symbol === "BTC/USDT" && p.side === "long",
+        )
+      ) {
+        const hedgeSize = Math.min(equity * 0.1, 1000);
+        this.engine.openPosition({
+          symbol: "BTC/USDT",
+          side: "long",
+          quantity: hedgeSize,
+          entry_price: btcPrice,
+          stop_loss: +(btcPrice * 0.95).toFixed(2),
+          take_profit: +(btcPrice * 1.05).toFixed(2),
+          strategy: "헤지 보호",
+        });
+        this.addSignal({
+          strategy: "헤지 보호",
+          symbol: "BTC/USDT",
+          side: "long",
+          confidence: 80,
+          reason: `포트폴리오 숏 비중 ${(shortPct * 100).toFixed(0)}% 과다, BTC 롱 헤지`,
+          timestamp: Date.now(),
+        });
+      }
+    }
+  }
+
   tick(prices: CoinPrice[]): void {
     const priceMap: Record<string, number> = {};
     const coinPriceMap: Record<string, CoinPrice> = {};
@@ -262,10 +349,18 @@ export class AutoStrategyRunner {
     // Check SL/TP triggers
     this.engine.checkTriggers(priceMap);
 
+    // Daily loss circuit breaker: stop trading if daily loss > 3% of initial balance
+    if (this.engine.isDailyLossExceeded(0.03)) {
+      // Still update prices and check triggers above (to honor existing SL/TP)
+      this.engine.snapshotEquity();
+      return; // Don't open new positions
+    }
+
     const account = this.engine.getAccount();
     const availableBalance = account.balance;
 
     const regime = this.getRegimeFn ? this.getRegimeFn() : null;
+    const minConfidence = this.getMinConfidence(regime);
 
     // Collect ALL signals from ALL coins
     const allSignals: InternalSignal[] = [];
@@ -281,6 +376,13 @@ export class AutoStrategyRunner {
       const lastTime = this.lastTradeTime[coin.symbol] || 0;
       if (Date.now() - lastTime < 60_000) continue;
 
+      // Skip coins with 3+ consecutive losses (cool off for 10 min)
+      const consecutiveLosses = this.engine.getConsecutiveLosses(coin.symbol);
+      if (consecutiveLosses >= 3) {
+        const lastLossTime = this.lastTradeTime[coin.symbol] || 0;
+        if (Date.now() - lastLossTime < 600_000) continue; // 10 min cooldown after 3 losses
+      }
+
       const coinPrice = coinPriceMap[coin.symbol];
       const signals = this.getAllSignals(
         coin.symbol,
@@ -290,7 +392,13 @@ export class AutoStrategyRunner {
         regime,
         coinPrice,
       );
-      allSignals.push(...signals);
+
+      // Filter by adaptive confidence threshold
+      for (const signal of signals) {
+        if (signal.confidence >= minConfidence) {
+          allSignals.push(signal);
+        }
+      }
     }
 
     // Check DCA opportunities on existing losing positions
@@ -343,6 +451,41 @@ export class AutoStrategyRunner {
 
       this.lastTradeTime[signal.symbol] = Date.now();
     }
+
+    // Partial profit taking: take 40% at halfway to TP
+    for (const pos of this.engine.getAccount().positions) {
+      if (this.partialClosedIds.has(pos.id)) continue;
+
+      const price = priceMap[pos.symbol];
+      if (!price) continue;
+
+      const profitPct =
+        pos.side === "long"
+          ? (price - pos.entry_price) / pos.entry_price
+          : (pos.entry_price - price) / pos.entry_price;
+
+      const tpDistance =
+        pos.side === "long"
+          ? (pos.take_profit - pos.entry_price) / pos.entry_price
+          : (pos.entry_price - pos.take_profit) / pos.entry_price;
+
+      // If we've reached 50% of TP target but not yet at TP
+      if (profitPct >= tpDistance * 0.5 && profitPct < tpDistance) {
+        this.engine.partialClose(pos.id, 0.4, price);
+        this.partialClosedIds.add(pos.id);
+        this.addSignal({
+          strategy: pos.strategy,
+          symbol: pos.symbol,
+          side: pos.side,
+          confidence: 90,
+          reason: `${(profitPct * 100).toFixed(1)}% 수익 도달, 40% 부분 익절`,
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    // Portfolio hedge protection
+    this.checkHedgeNeed(priceMap, regime);
 
     // Snapshot equity
     this.engine.snapshotEquity();

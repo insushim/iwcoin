@@ -86,6 +86,11 @@ const strategies = [
     description: "손실 포지션 -1~3% 구간에서 분할매수로 평단가 개선",
   },
   {
+    id: "hedge",
+    name: "헤지 보호",
+    description: "포트폴리오 한쪽 치우침 감지 시 BTC 반대 포지션으로 헤지",
+  },
+  {
     id: "manual",
     name: "수동 매매",
     description: "사용자가 직접 진입/청산하는 수동 전략",
