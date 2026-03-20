@@ -229,16 +229,24 @@ export class AutoStrategyRunner {
     );
     if (totalExposure >= account.initial_balance * 0.93) return false;
 
-    // Portfolio balance enforcement: prevent extreme directional skew
+    // Dynamic portfolio balance based on market regime
     const exposure = this.engine.getPortfolioExposure();
     const totalExp = exposure.longExposure + exposure.shortExposure;
     if (totalExp > 0) {
-      const longRatio = exposure.longExposure / totalExp;
       const shortRatio = exposure.shortExposure / totalExp;
-      // If portfolio is >65% short, only allow longs
-      if (shortRatio > 0.65 && signal.side === "short") return false;
-      // If portfolio is >65% long, only allow shorts
-      if (longRatio > 0.65 && signal.side === "long") return false;
+      const longRatio = exposure.longExposure / totalExp;
+      // Max short ratio depends on Fear & Greed
+      const regime = this.getRegimeFn ? this.getRegimeFn() : null;
+      const fg = regime?.fearGreed ?? 50;
+      // F&G 10 → maxShort 80%, F&G 50 → 55%, F&G 90 → 30%
+      const maxShortRatio = Math.max(
+        0.3,
+        Math.min(0.8, 0.8 - (fg / 100) * 0.5),
+      );
+      const maxLongRatio = 1 - maxShortRatio + 0.1; // slight overlap allowed
+
+      if (shortRatio > maxShortRatio && signal.side === "short") return false;
+      if (longRatio > maxLongRatio && signal.side === "long") return false;
     }
 
     // Never open opposite directions on same coin (long+short = pointless, just pays fees)
