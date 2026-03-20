@@ -206,20 +206,20 @@ export class AutoStrategyRunner {
     // Max positions
     if (account.positions.length >= this.settings.max_positions) return false;
 
-    // No more than 3 positions in the same correlation group
+    // No more than 4 positions in the same correlation group
     const group = getCorrelationGroup(signal.symbol);
     if (group) {
       const groupCount = account.positions.filter((p) =>
         group.includes(p.symbol),
       ).length;
-      if (groupCount >= 3) return false;
+      if (groupCount >= 4) return false;
     }
 
-    // No more than 3 positions using the same strategy
+    // No more than 5 positions using the same strategy
     const strategyCount = account.positions.filter(
       (p) => p.strategy === signal.strategy,
     ).length;
-    if (strategyCount >= 3) return false;
+    if (strategyCount >= 5) return false;
 
     // Total exposure should not exceed 80% of initial balance
     const totalExposure = account.positions.reduce(
@@ -556,6 +556,36 @@ export class AutoStrategyRunner {
     coinPrice: CoinPrice | undefined,
   ): InternalSignal[] {
     const signals: InternalSignal[] = [];
+
+    // Regime-based instant entry: in strong bear/bull, enter ALL coins immediately
+    if (regime) {
+      if (regime.regime === "bear" && regime.fearGreed < 30) {
+        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        signals.push({
+          symbol,
+          sector,
+          side: "short",
+          strategy: "레짐 적응형",
+          confidence: Math.min(68, 58 + (30 - regime.fearGreed) * 0.3),
+          reason: `극도의 공포(F&G ${regime.fearGreed}), 전 종목 숏`,
+          slPct,
+          tpPct,
+        });
+      }
+      if (regime.regime === "bull" && regime.fearGreed > 70) {
+        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        signals.push({
+          symbol,
+          sector,
+          side: "long",
+          strategy: "레짐 적응형",
+          confidence: Math.min(68, 58 + (regime.fearGreed - 70) * 0.3),
+          reason: `극도의 탐욕(F&G ${regime.fearGreed}), 전 종목 롱`,
+          slPct,
+          tpPct,
+        });
+      }
+    }
 
     // Instant entry: 24h change-based (works from first tick!)
     if (coinPrice) {
