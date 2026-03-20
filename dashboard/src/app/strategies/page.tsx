@@ -98,7 +98,20 @@ export default function StrategiesPage() {
       .map((s) => s.strategy),
   );
 
-  const ps = performanceStats;
+  const ps = performanceStats || {
+    total_trades: 0,
+    win_rate: 0,
+    profit_factor: 0,
+    avg_win: 0,
+    avg_loss: 0,
+    max_drawdown: 0,
+    max_drawdown_pct: 0,
+    sharpe_ratio: 0,
+    total_pnl: 0,
+    total_fees: 0,
+    best_trade: 0,
+    worst_trade: 0,
+  };
 
   return (
     <div className="space-y-6">

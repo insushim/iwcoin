@@ -19,12 +19,24 @@ function cached<T>(
   });
 }
 
+async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    const res = await fetch(url);
+    if (res.ok) return res;
+    if (res.status === 429 && i < retries - 1) {
+      await new Promise((r) => setTimeout(r, (i + 1) * 2000));
+      continue;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  }
+  throw new Error("Max retries reached");
+}
+
 export async function fetchPrices(): Promise<CoinPrice[]> {
   return cached("prices", 30_000, async () => {
     const ids = COINS.map((c) => c.coingeckoId).join(",");
     const url = `${COINGECKO_BASE}/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`CoinGecko prices: ${res.status}`);
+    const res = await fetchWithRetry(url);
     const data = await res.json();
 
     return COINS.map((coin) => {
@@ -43,10 +55,9 @@ export async function fetchPrices(): Promise<CoinPrice[]> {
 
 export async function fetchFearGreed(): Promise<FearGreedData> {
   return cached("fng", 300_000, async () => {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       "https://api.alternative.me/fng/?limit=1&format=json",
     );
-    if (!res.ok) throw new Error(`Fear&Greed: ${res.status}`);
     const data = await res.json();
     const item = data.data?.[0];
     return {
@@ -58,10 +69,9 @@ export async function fetchFearGreed(): Promise<FearGreedData> {
 
 export async function fetchFearGreedHistory(): Promise<FearGreedHistoryItem[]> {
   return cached("fng_history", 300_000, async () => {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       "https://api.alternative.me/fng/?limit=30&format=json",
     );
-    if (!res.ok) throw new Error(`Fear&Greed history: ${res.status}`);
     const data = await res.json();
     return (data.data ?? [])
       .map(
@@ -87,8 +97,7 @@ export async function fetchMarketChart(
 ): Promise<{ date: string; price: number }[]> {
   return cached(`chart_${coinId}_${days}`, 300_000, async () => {
     const url = `${COINGECKO_BASE}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Market chart: ${res.status}`);
+    const res = await fetchWithRetry(url);
     const data = await res.json();
     const prices: [number, number][] = data.prices ?? [];
 
@@ -111,8 +120,7 @@ export async function fetchGlobalData(): Promise<{
 }> {
   return cached("global", 300_000, async () => {
     const url = `${COINGECKO_BASE}/global`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Global data: ${res.status}`);
+    const res = await fetchWithRetry(url);
     const data = await res.json();
     return {
       btc_dominance: data.data?.market_cap_percentage?.btc ?? 0,
