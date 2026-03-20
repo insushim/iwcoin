@@ -229,6 +229,14 @@ export class AutoStrategyRunner {
     );
     if (totalExposure >= account.initial_balance * 0.93) return false;
 
+    // Never open opposite directions on same coin (long+short = pointless, just pays fees)
+    if (
+      account.positions.some(
+        (p) => p.symbol === signal.symbol && p.side !== signal.side,
+      )
+    )
+      return false;
+
     // Already have position in this symbol WITH THIS STRATEGY?
     // (DCA strategy is exempt from this check - it's handled separately)
     if (signal.strategy !== "DCA 분할매수") {
