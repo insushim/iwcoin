@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useDashboardStore } from "@/lib/store";
 import {
   Play,
@@ -13,105 +13,97 @@ import {
   Clock,
 } from "lucide-react";
 
+const emptyStats = {
+  total_trades: 0,
+  win_rate: 0,
+  profit_factor: 0,
+  avg_win: 0,
+  avg_loss: 0,
+  max_drawdown: 0,
+  max_drawdown_pct: 0,
+  sharpe_ratio: 0,
+  total_pnl: 0,
+  total_fees: 0,
+  best_trade: 0,
+  worst_trade: 0,
+};
+
+const strategies = [
+  {
+    id: "regime",
+    name: "레짐 적응형",
+    description:
+      "시장 레짐(강세/약세/횡보)에 따라 MACD, RSI, 볼린저밴드를 복합 활용",
+  },
+  {
+    id: "macd",
+    name: "MACD 크로스",
+    description: "MACD 라인과 시그널 라인 교차로 추세 전환 포착",
+  },
+  {
+    id: "bollinger",
+    name: "볼린저 밴드",
+    description: "상/하단 밴드 이탈 시 평균회귀 매매 신호 생성",
+  },
+  {
+    id: "sma",
+    name: "SMA 크로스오버",
+    description: "단기/장기 이동평균선 교차 시 매매 신호 생성",
+  },
+  {
+    id: "rsi_over",
+    name: "RSI 과매도",
+    description: "RSI 30 이하 과매도 구간에서 매수 신호",
+  },
+  {
+    id: "rsi_under",
+    name: "RSI 과매수",
+    description: "RSI 70 이상 과매수 구간에서 매도 신호",
+  },
+  {
+    id: "manual",
+    name: "수동 매매",
+    description: "사용자가 직접 진입/청산하는 수동 전략",
+  },
+];
+
 export default function StrategiesPage() {
-  const {
-    account,
-    isAutoTrading,
-    toggleAutoTrading,
-    performanceStats,
-    recentSignals,
-  } = useDashboardStore();
+  const isAutoTrading = useDashboardStore((s) => s.isAutoTrading);
+  const toggleAutoTrading = useDashboardStore((s) => s.toggleAutoTrading);
+  const tradeHistory = useDashboardStore((s) => s.account.trade_history);
+  const performanceStats = useDashboardStore((s) => s.performanceStats);
+  const recentSignals = useDashboardStore((s) => s.recentSignals);
+
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
-  const trades = account.trade_history;
+  const ps = performanceStats ?? emptyStats;
 
-  const strategyStats = useMemo(() => {
-    const map = new Map<
-      string,
-      { wins: number; losses: number; totalPnl: number; count: number }
-    >();
-    for (const t of trades) {
-      const s = map.get(t.strategy) || {
-        wins: 0,
-        losses: 0,
-        totalPnl: 0,
-        count: 0,
-      };
-      s.count++;
-      s.totalPnl += t.pnl;
-      if (t.pnl > 0) s.wins++;
-      else s.losses++;
-      map.set(t.strategy, s);
-    }
-    return Array.from(map.entries()).map(([name, stats]) => ({
-      name,
-      ...stats,
-      winRate: stats.count > 0 ? (stats.wins / stats.count) * 100 : 0,
-    }));
-  }, [trades]);
+  // Compute strategy stats inline (no useMemo to avoid ref issues)
+  const strategyMap = new Map<
+    string,
+    { wins: number; losses: number; totalPnl: number; count: number }
+  >();
+  for (const t of tradeHistory) {
+    const s = strategyMap.get(t.strategy) || {
+      wins: 0,
+      losses: 0,
+      totalPnl: 0,
+      count: 0,
+    };
+    s.count++;
+    s.totalPnl += t.pnl;
+    if (t.pnl > 0) s.wins++;
+    else s.losses++;
+    strategyMap.set(t.strategy, s);
+  }
 
-  const strategies = [
-    {
-      id: "regime",
-      name: "레짐 적응형",
-      description:
-        "시장 레짐(강세/약세/횡보)에 따라 MACD, RSI, 볼린저밴드를 복합 활용",
-    },
-    {
-      id: "macd",
-      name: "MACD 크로스",
-      description: "MACD 라인과 시그널 라인 교차로 추세 전환 포착",
-    },
-    {
-      id: "bollinger",
-      name: "볼린저 밴드",
-      description: "상/하단 밴드 이탈 시 평균회귀 매매 신호 생성",
-    },
-    {
-      id: "sma",
-      name: "SMA 크로스오버",
-      description: "단기/장기 이동평균선 교차 시 매매 신호 생성",
-    },
-    {
-      id: "rsi_over",
-      name: "RSI 과매도",
-      description: "RSI 30 이하 과매도 구간에서 매수 신호",
-    },
-    {
-      id: "rsi_under",
-      name: "RSI 과매수",
-      description: "RSI 70 이상 과매수 구간에서 매도 신호",
-    },
-    {
-      id: "manual",
-      name: "수동 매매",
-      description: "사용자가 직접 진입/청산하는 수동 전략",
-    },
-  ];
-
-  // Check if a strategy has recent signals (within last 5 min)
   const activeStrategyNames = new Set(
-    recentSignals
+    (recentSignals ?? [])
       .filter((s) => Date.now() - s.timestamp < 300_000)
       .map((s) => s.strategy),
   );
-
-  const ps = performanceStats || {
-    total_trades: 0,
-    win_rate: 0,
-    profit_factor: 0,
-    avg_win: 0,
-    avg_loss: 0,
-    max_drawdown: 0,
-    max_drawdown_pct: 0,
-    sharpe_ratio: 0,
-    total_pnl: 0,
-    total_fees: 0,
-    best_trade: 0,
-    worst_trade: 0,
-  };
 
   return (
     <div className="space-y-6">
@@ -153,7 +145,7 @@ export default function StrategiesPage() {
               className={`text-lg font-bold ${ps.profit_factor >= 1 ? "text-emerald-400" : "text-red-400"}`}
             >
               {ps.profit_factor === Infinity
-                ? "-"
+                ? "∞"
                 : ps.profit_factor.toFixed(2)}
             </p>
           </div>
@@ -212,9 +204,11 @@ export default function StrategiesPage() {
       {/* Strategy Cards */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         {strategies.map((s) => {
-          const stats = strategyStats.find((st) => st.name === s.name);
+          const stats = strategyMap.get(s.name);
           const isAuto = s.id !== "manual";
           const isActive = activeStrategyNames.has(s.name);
+          const winRate =
+            stats && stats.count > 0 ? (stats.wins / stats.count) * 100 : 0;
 
           return (
             <div
@@ -268,7 +262,7 @@ export default function StrategiesPage() {
                   <div>
                     <p className="text-xs text-zinc-500">승률</p>
                     <p className="text-lg font-bold text-zinc-200">
-                      {stats.winRate.toFixed(1)}%
+                      {winRate.toFixed(1)}%
                     </p>
                   </div>
                   <div>
@@ -296,7 +290,7 @@ export default function StrategiesPage() {
                     <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400"
-                        style={{ width: `${stats.winRate}%` }}
+                        style={{ width: `${winRate}%` }}
                       />
                     </div>
                   </div>
@@ -316,7 +310,7 @@ export default function StrategiesPage() {
         <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-300">
           <Activity size={16} /> 최근 신호
         </h3>
-        {recentSignals.length === 0 ? (
+        {!recentSignals || recentSignals.length === 0 ? (
           <p className="mt-4 text-sm text-zinc-600">
             {isAutoTrading
               ? "자동매매가 실행 중입니다. 신호를 기다리는 중..."
