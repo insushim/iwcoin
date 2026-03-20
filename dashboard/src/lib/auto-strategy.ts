@@ -562,33 +562,164 @@ export class AutoStrategyRunner {
   ): InternalSignal[] {
     const signals: InternalSignal[] = [];
 
-    // Regime-based instant entry: in strong bear/bull, enter ALL coins immediately
-    if (regime) {
-      if (regime.regime === "bear" && regime.fearGreed < 30) {
-        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
-        signals.push({
-          symbol,
-          sector,
-          side: "short",
-          strategy: "레짐 적응형",
-          confidence: Math.min(68, 58 + (30 - regime.fearGreed) * 0.3),
-          reason: `극도의 공포(F&G ${regime.fearGreed}), 전 종목 숏`,
-          slPct,
-          tpPct,
-        });
+    // Balanced regime entry: mix trend + contrarian for true diversification
+    // In bear: 60% short (trend), 40% long (mean reversion on oversold)
+    // In bull: 60% long (trend), 40% short (mean reversion on overbought)
+    if (regime && coinPrice) {
+      const change = coinPrice.change24h;
+      if (regime.regime === "bear") {
+        // Coins dropping hard → short (trend following)
+        if (change < -1) {
+          const { slPct, tpPct } = adjustSlTp(
+            0.03,
+            0.06,
+            history,
+            currentPrice,
+          );
+          signals.push({
+            symbol,
+            sector,
+            side: "short",
+            strategy: "레짐 적응형",
+            confidence: Math.min(66, 56 + Math.abs(change)),
+            reason: `약세장 추세추종: 24h ${change.toFixed(1)}% 하락 중`,
+            slPct,
+            tpPct,
+          });
+        }
+        // Coins dropped TOO much → long (oversold bounce)
+        if (change < -3) {
+          const { slPct, tpPct } = adjustSlTp(
+            0.02,
+            0.04,
+            history,
+            currentPrice,
+          );
+          signals.push({
+            symbol,
+            sector,
+            side: "long",
+            strategy: "레짐 적응형",
+            confidence: Math.min(64, 54 + Math.abs(change) * 0.5),
+            reason: `약세장 반등매매: 24h ${change.toFixed(1)}% 과매도, 단기 반등 기대`,
+            slPct,
+            tpPct,
+          });
+        }
+        // Coins going UP in bear market → contrarian long (relative strength)
+        if (change > 0.5) {
+          const { slPct, tpPct } = adjustSlTp(
+            0.03,
+            0.06,
+            history,
+            currentPrice,
+          );
+          signals.push({
+            symbol,
+            sector,
+            side: "long",
+            strategy: "모멘텀 돌파",
+            confidence: Math.min(62, 54 + change * 2),
+            reason: `약세장 역행 강세: 24h +${change.toFixed(1)}%, 상대적 강세`,
+            slPct,
+            tpPct,
+          });
+        }
       }
-      if (regime.regime === "bull" && regime.fearGreed > 70) {
-        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
-        signals.push({
-          symbol,
-          sector,
-          side: "long",
-          strategy: "레짐 적응형",
-          confidence: Math.min(68, 58 + (regime.fearGreed - 70) * 0.3),
-          reason: `극도의 탐욕(F&G ${regime.fearGreed}), 전 종목 롱`,
-          slPct,
-          tpPct,
-        });
+      if (regime.regime === "bull") {
+        if (change > 1) {
+          const { slPct, tpPct } = adjustSlTp(
+            0.03,
+            0.06,
+            history,
+            currentPrice,
+          );
+          signals.push({
+            symbol,
+            sector,
+            side: "long",
+            strategy: "레짐 적응형",
+            confidence: Math.min(66, 56 + change),
+            reason: `강세장 추세추종: 24h +${change.toFixed(1)}% 상승 중`,
+            slPct,
+            tpPct,
+          });
+        }
+        if (change > 4) {
+          const { slPct, tpPct } = adjustSlTp(
+            0.02,
+            0.04,
+            history,
+            currentPrice,
+          );
+          signals.push({
+            symbol,
+            sector,
+            side: "short",
+            strategy: "레짐 적응형",
+            confidence: Math.min(64, 54 + change * 0.5),
+            reason: `강세장 과열 조정: 24h +${change.toFixed(1)}% 과매수`,
+            slPct,
+            tpPct,
+          });
+        }
+        if (change < -0.5) {
+          const { slPct, tpPct } = adjustSlTp(
+            0.03,
+            0.06,
+            history,
+            currentPrice,
+          );
+          signals.push({
+            symbol,
+            sector,
+            side: "short",
+            strategy: "모멘텀 돌파",
+            confidence: Math.min(62, 54 + Math.abs(change) * 2),
+            reason: `강세장 역행 약세: 24h ${change.toFixed(1)}%, 상대적 약세`,
+            slPct,
+            tpPct,
+          });
+        }
+      }
+      if (regime.regime === "sideways") {
+        // Mean reversion both ways
+        if (change > 2) {
+          const { slPct, tpPct } = adjustSlTp(
+            0.02,
+            0.04,
+            history,
+            currentPrice,
+          );
+          signals.push({
+            symbol,
+            sector,
+            side: "short",
+            strategy: "레짐 적응형",
+            confidence: Math.min(64, 55 + change),
+            reason: `횡보장 평균회귀: 24h +${change.toFixed(1)}% 숏`,
+            slPct,
+            tpPct,
+          });
+        }
+        if (change < -2) {
+          const { slPct, tpPct } = adjustSlTp(
+            0.02,
+            0.04,
+            history,
+            currentPrice,
+          );
+          signals.push({
+            symbol,
+            sector,
+            side: "long",
+            strategy: "레짐 적응형",
+            confidence: Math.min(64, 55 + Math.abs(change)),
+            reason: `횡보장 평균회귀: 24h ${change.toFixed(1)}% 롱`,
+            slPct,
+            tpPct,
+          });
+        }
       }
     }
 
@@ -922,7 +1053,7 @@ export class AutoStrategyRunner {
     const lower = middle - 2 * sd;
 
     if (currentPrice <= lower * 1.005) {
-      if (regime?.regime === "bear") return null;
+      // Mean reversion: allow longs even in bear (that's the whole point)
       const distPct = ((middle - currentPrice) / middle) * 100;
       return {
         side: "long",
@@ -933,7 +1064,6 @@ export class AutoStrategyRunner {
     }
 
     if (currentPrice >= upper * 0.995) {
-      if (regime?.regime === "bull") return null;
       const distPct = ((currentPrice - middle) / middle) * 100;
       return {
         side: "short",
@@ -1109,9 +1239,8 @@ export class AutoStrategyRunner {
     const upper = middle + 2 * sd;
     const lower = middle - 2 * sd;
 
-    // Strong buy: RSI < 35 AND price near lower BB
+    // Strong buy: RSI < 35 AND price near lower BB (mean reversion - regime independent)
     if (rsi < 35 && currentPrice <= lower * 1.01) {
-      if (regime?.regime === "bear") return null;
       return {
         side: "long",
         strategy: "RSI+BB 복합",
@@ -1172,19 +1301,27 @@ export class AutoStrategyRunner {
     }
 
     if (r === "bear") {
-      // Bear: ALL sectors can short - this is the key change
       regimeLabel = "약세장";
       const isDefensive =
         sector === "store-of-value" ||
         sector === "payment" ||
         sector === "exchange";
-      if (rsi > 40) {
-        // Very relaxed threshold - almost always triggers
+      // Defensive sectors → long (safe haven buying)
+      if (isDefensive && rsi < 50) {
+        return {
+          side: "long",
+          strategy: "섹터 로테이션",
+          confidence: 63,
+          reason: `${regimeLabel}: ${sector} 방어 섹터 롱, RSI(${rsi.toFixed(0)})`,
+        };
+      }
+      // Growth sectors → short (they drop more in bear)
+      if (!isDefensive && rsi > 45) {
         return {
           side: "short",
           strategy: "섹터 로테이션",
-          confidence: isDefensive ? 62 : 66, // Riskier sectors get higher confidence short
-          reason: `${regimeLabel}: ${sector} 섹터 숏, RSI(${rsi.toFixed(0)})`,
+          confidence: 65,
+          reason: `${regimeLabel}: ${sector} 성장 섹터 숏, RSI(${rsi.toFixed(0)})`,
         };
       }
       return null;
