@@ -8,9 +8,13 @@ import type {
   PaperTrade,
   EquitySnapshot,
   RegimeData,
+  TradingSettings,
+  PerformanceStats,
 } from "./types";
+import { DEFAULT_SETTINGS } from "./types";
 import { PaperTradingEngine } from "./paper-trading";
 import { AutoStrategyRunner } from "./auto-strategy";
+import type { StrategySignal } from "./auto-strategy";
 import {
   fetchPrices,
   fetchFearGreed,
@@ -37,6 +41,11 @@ interface DashboardStore {
   account: PaperAccount;
   equityHistory: EquitySnapshot[];
 
+  // Trading settings & performance
+  tradingSettings: TradingSettings;
+  performanceStats: PerformanceStats;
+  recentSignals: StrategySignal[];
+
   // Actions
   openPosition: (params: {
     symbol: string;
@@ -49,6 +58,7 @@ interface DashboardStore {
   }) => PaperPosition | null;
   closePosition: (id: string, price: number) => PaperTrade | null;
   resetAccount: (balance: number) => void;
+  updateTradingSettings: (settings: TradingSettings) => void;
 
   // Auto strategy
   isAutoTrading: boolean;
@@ -79,6 +89,10 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   account: engine.getAccount(),
   equityHistory: engine.getEquityHistory(),
 
+  tradingSettings: engine.getSettings(),
+  performanceStats: engine.getPerformanceStats(),
+  recentSignals: [],
+
   regime: { regime: "sideways", fearGreed: 50, btcDominance: 0 },
 
   isAutoTrading: false,
@@ -94,6 +108,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       set({
         account: engine.getAccount(),
         equityHistory: engine.getEquityHistory(),
+        performanceStats: engine.getPerformanceStats(),
       });
     }
     return pos;
@@ -105,6 +120,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       set({
         account: engine.getAccount(),
         equityHistory: engine.getEquityHistory(),
+        performanceStats: engine.getPerformanceStats(),
       });
     }
     return trade;
@@ -115,7 +131,17 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     set({
       account: engine.getAccount(),
       equityHistory: engine.getEquityHistory(),
+      performanceStats: engine.getPerformanceStats(),
+      recentSignals: [],
     });
+  },
+
+  updateTradingSettings: (settings: TradingSettings) => {
+    engine.updateSettings(settings);
+    if (strategyRunner) {
+      strategyRunner.setSettings(settings);
+    }
+    set({ tradingSettings: engine.getSettings() });
   },
 
   toggleAutoTrading: () => {
@@ -126,7 +152,14 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       set({ isAutoTrading: false });
     } else {
       strategyRunner = new AutoStrategyRunner(engine);
-      strategyRunner.start(() => get().prices);
+      strategyRunner.setSettings(engine.getSettings());
+      strategyRunner.start(
+        () => get().prices,
+        () => ({
+          regime: get().regime.regime,
+          fearGreed: get().regime.fearGreed,
+        }),
+      );
       set({ isAutoTrading: true });
     }
   },
@@ -145,12 +178,19 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       const regime: RegimeData["regime"] =
         fg.value > 60 ? "bull" : fg.value < 40 ? "bear" : "sideways";
 
-      set({
+      const updatedState: Partial<DashboardStore> = {
         prices,
         account: engine.getAccount(),
         equityHistory: engine.getEquityHistory(),
+        performanceStats: engine.getPerformanceStats(),
         regime: { regime, fearGreed: fg.value, btcDominance: bd },
-      });
+      };
+
+      if (strategyRunner) {
+        updatedState.recentSignals = strategyRunner.getRecentSignals();
+      }
+
+      set(updatedState as DashboardStore);
     } catch (e) {
       set({ error: "가격 데이터 로딩 실패" });
     }
@@ -184,6 +224,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         btcChart,
         account: engine.getAccount(),
         equityHistory: engine.getEquityHistory(),
+        performanceStats: engine.getPerformanceStats(),
         regime: {
           regime,
           fearGreed: fg.value,
