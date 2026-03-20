@@ -106,8 +106,9 @@ export class PaperTradingEngine {
     if (this.account.positions.length >= this.settings.max_positions)
       return null;
 
-    // Risk limit: max position size as % of balance
-    const maxCost = this.account.balance * this.settings.max_position_pct;
+    // Risk limit: max position size as % of equity (not just cash balance)
+    const equity = this.getTotalEquity();
+    const maxCost = equity * this.settings.max_position_pct;
     if (params.quantity > maxCost) return null;
 
     // Risk limit: check drawdown

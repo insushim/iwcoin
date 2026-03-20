@@ -410,17 +410,6 @@ export class AutoStrategyRunner {
     const dcaSignals = this.getDCASignals(priceMap, regime);
     allSignals.push(...dcaSignals);
 
-    // Debug: log how many signals and coins were processed
-    const coinsWithPrices = COINS.filter((c) => priceMap[c.symbol] > 0).length;
-    this.addSignal({
-      strategy: "시스템",
-      symbol: "DEBUG",
-      side: "long",
-      confidence: 0,
-      reason: `코인 ${coinsWithPrices}개 가격수신, 신호 ${allSignals.length}개, 포지션 ${this.engine.getAccount().positions.length}개, 잔액 $${this.engine.getAccount().balance.toFixed(0)}`,
-      timestamp: Date.now(),
-    });
-
     // Sort by confidence descending - pick best signals first
     allSignals.sort((a, b) => b.confidence - a.confidence);
 
