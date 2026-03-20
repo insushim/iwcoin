@@ -150,18 +150,18 @@ export class AutoStrategyRunner {
     // Max positions
     if (account.positions.length >= this.settings.max_positions) return false;
 
-    // No more than 3 positions in the same sector
+    // No more than 4 positions in the same sector
     const sectorCount = account.positions.filter((p) => {
       const coin = COINS.find((c) => c.symbol === p.symbol);
       return coin && coin.sector === signal.sector;
     }).length;
-    if (sectorCount >= 3) return false;
+    if (sectorCount >= 4) return false;
 
-    // No more than 2 positions using the same strategy
+    // No more than 3 positions using the same strategy
     const strategyCount = account.positions.filter(
       (p) => p.strategy === signal.strategy,
     ).length;
-    if (strategyCount >= 2) return false;
+    if (strategyCount >= 3) return false;
 
     // Total exposure should not exceed 80% of initial balance
     const totalExposure = account.positions.reduce(
@@ -213,14 +213,14 @@ export class AutoStrategyRunner {
 
     for (const coin of COINS) {
       const history = this.priceHistory[coin.symbol];
-      if (!history || history.length < 5) continue;
+      if (!history || history.length < 1) continue;
 
       const price = priceMap[coin.symbol];
       if (!price) continue;
 
-      // Don't trade same symbol too frequently (5 min cooldown)
+      // Don't trade same symbol too frequently (90s cooldown)
       const lastTime = this.lastTradeTime[coin.symbol] || 0;
-      if (Date.now() - lastTime < 300_000) continue;
+      if (Date.now() - lastTime < 90_000) continue;
 
       const coinPrice = coinPriceMap[coin.symbol];
       const signals = this.getAllSignals(
@@ -293,6 +293,73 @@ export class AutoStrategyRunner {
     coinPrice: CoinPrice | undefined,
   ): InternalSignal[] {
     const signals: InternalSignal[] = [];
+
+    // Instant entry: 24h change-based (works from first tick!)
+    if (coinPrice) {
+      const change = coinPrice.change24h;
+      // Strong movers: if 24h change > 3%, ride the momentum
+      if (change > 3 && regime?.regime !== "bear") {
+        signals.push({
+          symbol,
+          sector,
+          side: "long",
+          strategy: "모멘텀 돌파",
+          confidence: Math.min(70, 55 + change),
+          reason: `24h +${change.toFixed(1)}% 강한 상승 모멘텀`,
+          slPct: 0.03,
+          tpPct: 0.1,
+        });
+      }
+      if (change < -3 && regime?.regime !== "bull") {
+        signals.push({
+          symbol,
+          sector,
+          side: "short",
+          strategy: "모멘텀 돌파",
+          confidence: Math.min(70, 55 + Math.abs(change)),
+          reason: `24h ${change.toFixed(1)}% 강한 하락 모멘텀`,
+          slPct: 0.03,
+          tpPct: 0.1,
+        });
+      }
+      // Mean reversion: if 24h change > 5%, expect pullback
+      if (change > 5 && regime?.regime !== "bull") {
+        signals.push({
+          symbol,
+          sector,
+          side: "short",
+          strategy: "RSI+BB 복합",
+          confidence: Math.min(75, 60 + change * 0.5),
+          reason: `24h +${change.toFixed(1)}% 과열, 조정 기대`,
+          slPct: 0.02,
+          tpPct: 0.04,
+        });
+      }
+      if (change < -5 && regime?.regime !== "bear") {
+        signals.push({
+          symbol,
+          sector,
+          side: "long",
+          strategy: "RSI+BB 복합",
+          confidence: Math.min(75, 60 + Math.abs(change) * 0.5),
+          reason: `24h ${change.toFixed(1)}% 과매도, 반등 기대`,
+          slPct: 0.02,
+          tpPct: 0.04,
+        });
+      }
+    }
+
+    // Sector rotation: works from first tick with regime
+    if (regime && history.length >= 1) {
+      const r = this.sectorRotationStrategy(
+        symbol,
+        sector,
+        history,
+        currentPrice,
+        regime,
+      );
+      if (r) signals.push({ ...r, symbol, sector, slPct: 0.03, tpPct: 0.06 });
+    }
 
     // Regime-Aware Composite
     if (regime && history.length >= 30) {
@@ -712,7 +779,7 @@ export class AutoStrategyRunner {
     reason: string;
   } | null {
     const { regime: r } = regime;
-    const rsi = computeRSI(history);
+    const rsi = history.length >= 14 ? computeRSI(history) : 50;
 
     // Determine if this sector is favored in current regime
     let favored = false;
@@ -732,8 +799,8 @@ export class AutoStrategyRunner {
 
     if (!favored) return null;
 
-    // Use RSI for entry timing within favored sector
-    if (r === "bull" && rsi < 55) {
+    // Use RSI for entry timing within favored sector (relaxed thresholds)
+    if (r === "bull" && rsi < 60) {
       return {
         side: "long",
         strategy: "섹터 로테이션",
@@ -742,7 +809,7 @@ export class AutoStrategyRunner {
       };
     }
 
-    if (r === "bear" && rsi > 55) {
+    if (r === "bear" && rsi > 45) {
       return {
         side: "short",
         strategy: "섹터 로테이션",
@@ -751,7 +818,7 @@ export class AutoStrategyRunner {
       };
     }
 
-    if (r === "sideways" && rsi < 45) {
+    if (r === "sideways" && rsi < 55) {
       return {
         side: "long",
         strategy: "섹터 로테이션",
