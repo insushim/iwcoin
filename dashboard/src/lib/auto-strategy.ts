@@ -560,8 +560,37 @@ export class AutoStrategyRunner {
     // Instant entry: 24h change-based (works from first tick!)
     if (coinPrice) {
       const change = coinPrice.change24h;
-      // Strong movers: if 24h change > 3%, ride the momentum
-      if (change > 3 && regime?.regime !== "bear") {
+
+      // Regime-aligned momentum: in bear market, short everything that's dropping
+      if (regime?.regime === "bear" && change < -0.5) {
+        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        signals.push({
+          symbol,
+          sector,
+          side: "short",
+          strategy: "모멘텀 돌파",
+          confidence: Math.min(70, 55 + Math.abs(change) * 2),
+          reason: `약세장 + 24h ${change.toFixed(1)}% 하락, 숏 진입`,
+          slPct,
+          tpPct,
+        });
+      }
+      if (regime?.regime === "bull" && change > 0.5) {
+        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        signals.push({
+          symbol,
+          sector,
+          side: "long",
+          strategy: "모멘텀 돌파",
+          confidence: Math.min(70, 55 + change * 2),
+          reason: `강세장 + 24h +${change.toFixed(1)}% 상승, 롱 진입`,
+          slPct,
+          tpPct,
+        });
+      }
+
+      // Strong movers: if 24h change > 2%, ride the momentum
+      if (change > 2 && regime?.regime !== "bear") {
         const { slPct, tpPct } = adjustSlTp(0.03, 0.1, history, currentPrice);
         signals.push({
           symbol,
@@ -574,7 +603,7 @@ export class AutoStrategyRunner {
           tpPct,
         });
       }
-      if (change < -3 && regime?.regime !== "bull") {
+      if (change < -2 && regime?.regime !== "bull") {
         const { slPct, tpPct } = adjustSlTp(0.03, 0.1, history, currentPrice);
         signals.push({
           symbol,
@@ -587,8 +616,8 @@ export class AutoStrategyRunner {
           tpPct,
         });
       }
-      // Mean reversion: if 24h change > 5%, expect pullback
-      if (change > 5 && regime?.regime !== "bull") {
+      // Mean reversion: if 24h change > 4%, expect pullback
+      if (change > 4 && regime?.regime !== "bull") {
         const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({
           symbol,
@@ -601,7 +630,7 @@ export class AutoStrategyRunner {
           tpPct,
         });
       }
-      if (change < -5 && regime?.regime !== "bear") {
+      if (change < -4 && regime?.regime !== "bear") {
         const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({
           symbol,
@@ -1086,49 +1115,58 @@ export class AutoStrategyRunner {
     const { regime: r } = regime;
     const rsi = history.length >= 14 ? computeRSI(history) : 50;
 
-    // Determine if this sector is favored in current regime
-    let favored = false;
     let regimeLabel = "";
 
     if (r === "bull") {
-      favored =
-        sector === "smart-contract" || sector === "defi" || sector === "layer2";
+      // Bull: all sectors can long, but growth sectors get higher confidence
+      const isGrowth =
+        sector === "smart-contract" ||
+        sector === "defi" ||
+        sector === "layer2" ||
+        sector === "ai";
       regimeLabel = "강세장";
-    } else if (r === "bear") {
-      favored = sector === "store-of-value" || sector === "payment";
+      if (rsi < 60) {
+        return {
+          side: "long",
+          strategy: "섹터 로테이션",
+          confidence: isGrowth ? 68 : 58,
+          reason: `${regimeLabel}: ${sector} 섹터${isGrowth ? " 성장" : ""}, RSI(${rsi.toFixed(0)}) 롱 진입`,
+        };
+      }
+      return null;
+    }
+
+    if (r === "bear") {
+      // Bear: ALL sectors can short - this is the key change
       regimeLabel = "약세장";
-    } else {
-      favored = sector === "exchange" || sector === "store-of-value";
-      regimeLabel = "횡보장";
+      const isDefensive =
+        sector === "store-of-value" ||
+        sector === "payment" ||
+        sector === "exchange";
+      if (rsi > 40) {
+        // Very relaxed threshold - almost always triggers
+        return {
+          side: "short",
+          strategy: "섹터 로테이션",
+          confidence: isDefensive ? 62 : 66, // Riskier sectors get higher confidence short
+          reason: `${regimeLabel}: ${sector} 섹터 숏, RSI(${rsi.toFixed(0)})`,
+        };
+      }
+      return null;
     }
 
-    if (!favored) return null;
-
-    // Use RSI for entry timing within favored sector (relaxed thresholds)
-    if (r === "bull" && rsi < 60) {
+    // Sideways
+    regimeLabel = "횡보장";
+    const isStable =
+      sector === "exchange" ||
+      sector === "store-of-value" ||
+      sector === "payment";
+    if (rsi < 55) {
       return {
         side: "long",
         strategy: "섹터 로테이션",
-        confidence: 65,
-        reason: `${regimeLabel}: ${sector} 섹터 유리, RSI(${rsi.toFixed(0)}) 진입 적기`,
-      };
-    }
-
-    if (r === "bear" && rsi > 45) {
-      return {
-        side: "short",
-        strategy: "섹터 로테이션",
-        confidence: 65,
-        reason: `${regimeLabel}: ${sector} 섹터 방어적, RSI(${rsi.toFixed(0)}) 숏 진입`,
-      };
-    }
-
-    if (r === "sideways" && rsi < 55) {
-      return {
-        side: "long",
-        strategy: "섹터 로테이션",
-        confidence: 60,
-        reason: `${regimeLabel}: ${sector} 섹터 안정적, RSI(${rsi.toFixed(0)}) 저점 매수`,
+        confidence: isStable ? 62 : 55,
+        reason: `${regimeLabel}: ${sector} 섹터${isStable ? " 안정" : ""}, RSI(${rsi.toFixed(0)}) 저점 매수`,
       };
     }
 
