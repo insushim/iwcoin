@@ -39,7 +39,7 @@ export async function fetchPrices(): Promise<CoinPrice[]> {
     const res = await fetchWithRetry(url);
     const data = await res.json();
 
-    return COINS.map((coin) => {
+    return COINS.filter((coin) => data[coin.coingeckoId]?.usd).map((coin) => {
       const d = data[coin.coingeckoId] || {};
       return {
         symbol: coin.symbol,

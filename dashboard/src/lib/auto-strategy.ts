@@ -229,6 +229,18 @@ export class AutoStrategyRunner {
     );
     if (totalExposure >= account.initial_balance * 0.93) return false;
 
+    // Portfolio balance enforcement: prevent extreme directional skew
+    const exposure = this.engine.getPortfolioExposure();
+    const totalExp = exposure.longExposure + exposure.shortExposure;
+    if (totalExp > 0) {
+      const longRatio = exposure.longExposure / totalExp;
+      const shortRatio = exposure.shortExposure / totalExp;
+      // If portfolio is >65% short, only allow longs
+      if (shortRatio > 0.65 && signal.side === "short") return false;
+      // If portfolio is >65% long, only allow shorts
+      if (longRatio > 0.65 && signal.side === "long") return false;
+    }
+
     // Never open opposite directions on same coin (long+short = pointless, just pays fees)
     if (
       account.positions.some(
