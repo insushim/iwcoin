@@ -135,10 +135,16 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
 
   resetAccount: (balance) => {
     engine.reset(balance);
+    // Also reset trading settings to latest defaults
+    engine.updateSettings(DEFAULT_SETTINGS);
+    if (strategyRunner) {
+      strategyRunner.setSettings(DEFAULT_SETTINGS);
+    }
     set({
       account: engine.getAccount(),
       equityHistory: engine.getEquityHistory(),
       performanceStats: engine.getPerformanceStats(),
+      tradingSettings: DEFAULT_SETTINGS,
       recentSignals: [],
     });
   },
