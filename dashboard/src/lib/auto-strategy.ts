@@ -129,6 +129,7 @@ export class AutoStrategyRunner {
   private getRegimeFn: (() => RegimeData) | null = null;
   private recentSignals: StrategySignal[] = [];
   private activeStrategies: Set<string> = new Set();
+  private tickCount: number = 0;
   private partialClosedIds: Set<string> = new Set();
 
   constructor(engine: PaperTradingEngine) {
@@ -343,6 +344,8 @@ export class AutoStrategyRunner {
       }
     }
 
+    this.tickCount++;
+
     // Update existing position prices
     this.engine.updatePrices(priceMap);
 
@@ -372,9 +375,11 @@ export class AutoStrategyRunner {
       const price = priceMap[coin.symbol];
       if (!price) continue;
 
-      // Don't trade same symbol too frequently (60s cooldown)
-      const lastTime = this.lastTradeTime[coin.symbol] || 0;
-      if (Date.now() - lastTime < 60_000) continue;
+      // Don't trade same symbol too frequently (60s cooldown) - skip on first 3 ticks
+      if (this.tickCount > 3) {
+        const lastTime = this.lastTradeTime[coin.symbol] || 0;
+        if (Date.now() - lastTime < 60_000) continue;
+      }
 
       // Skip coins with 3+ consecutive losses (cool off for 10 min)
       const consecutiveLosses = this.engine.getConsecutiveLosses(coin.symbol);
@@ -404,6 +409,17 @@ export class AutoStrategyRunner {
     // Check DCA opportunities on existing losing positions
     const dcaSignals = this.getDCASignals(priceMap, regime);
     allSignals.push(...dcaSignals);
+
+    // Debug: log how many signals and coins were processed
+    const coinsWithPrices = COINS.filter((c) => priceMap[c.symbol] > 0).length;
+    this.addSignal({
+      strategy: "시스템",
+      symbol: "DEBUG",
+      side: "long",
+      confidence: 0,
+      reason: `코인 ${coinsWithPrices}개 가격수신, 신호 ${allSignals.length}개, 포지션 ${this.engine.getAccount().positions.length}개, 잔액 $${this.engine.getAccount().balance.toFixed(0)}`,
+      timestamp: Date.now(),
+    });
 
     // Sort by confidence descending - pick best signals first
     allSignals.sort((a, b) => b.confidence - a.confidence);
