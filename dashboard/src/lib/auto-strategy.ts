@@ -1307,7 +1307,7 @@ export class AutoStrategyRunner {
         sector === "payment" ||
         sector === "exchange";
       // Defensive sectors → long (safe haven buying)
-      if (isDefensive && rsi < 50) {
+      if (isDefensive && rsi <= 55) {
         return {
           side: "long",
           strategy: "섹터 로테이션",
@@ -1316,7 +1316,7 @@ export class AutoStrategyRunner {
         };
       }
       // Growth sectors → short (they drop more in bear)
-      if (!isDefensive && rsi > 45) {
+      if (!isDefensive && rsi >= 45) {
         return {
           side: "short",
           strategy: "섹터 로테이션",
