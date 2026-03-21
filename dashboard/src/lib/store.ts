@@ -102,7 +102,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
 
   regime: { regime: "sideways", fearGreed: 50, btcDominance: 0 },
 
-  isAutoTrading: false,
+  isAutoTrading:
+    typeof window !== "undefined" &&
+    localStorage.getItem("iw_auto_trading") === "true",
   loading: true,
   error: null,
   sidebarOpen: false,
@@ -162,6 +164,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     if (isAutoTrading) {
       strategyRunner?.stop();
       strategyRunner = null;
+      localStorage.setItem("iw_auto_trading", "false");
       set({ isAutoTrading: false });
     } else {
       strategyRunner = new AutoStrategyRunner(engine);
@@ -173,6 +176,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
           fearGreed: get().regime.fearGreed,
         }),
       );
+      localStorage.setItem("iw_auto_trading", "true");
       set({ isAutoTrading: true });
     }
   },
@@ -246,6 +250,19 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         },
         loading: false,
       });
+
+      // Auto-restore auto trading if it was on
+      if (get().isAutoTrading && !strategyRunner) {
+        strategyRunner = new AutoStrategyRunner(engine);
+        strategyRunner.setSettings(engine.getSettings());
+        strategyRunner.start(
+          () => get().prices,
+          () => ({
+            regime: get().regime.regime,
+            fearGreed: get().regime.fearGreed,
+          }),
+        );
+      }
 
       // Auto-refresh prices every 30s
       if (priceInterval) clearInterval(priceInterval);
