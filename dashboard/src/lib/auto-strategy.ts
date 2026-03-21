@@ -196,6 +196,14 @@ export class AutoStrategyRunner {
     else if (confidence <= 75) pctMultiplier = 0.85;
     else pctMultiplier = 1.0;
 
+    // Early phase (< 30 ticks ≈ 15min): use smaller positions to reserve capital
+    // for advanced strategies (RSI, MACD, EMA) that activate later
+    if (this.tickCount < 30) {
+      pctMultiplier *= 0.6; // 60% of normal size
+    } else if (this.tickCount < 55) {
+      pctMultiplier *= 0.8; // 80% of normal size
+    }
+
     const posSize = equity * this.settings.max_position_pct * pctMultiplier;
     return Math.min(posSize, 2000);
   }
@@ -222,12 +230,17 @@ export class AutoStrategyRunner {
     ).length;
     if (strategyCount >= 5) return false;
 
-    // Total exposure should not exceed 80% of initial balance
+    // Total exposure limit — ramp up as more strategies become available
     const totalExposure = account.positions.reduce(
       (sum, p) => sum + p.quantity,
       0,
     );
-    if (totalExposure >= account.initial_balance * 0.95) return false;
+    // Early phase: cap at 60% to reserve capital for advanced strategies
+    // After 30 ticks (~15min): cap at 80%. After 55 ticks (~28min): full 95%
+    let maxExposurePct = 0.95;
+    if (this.tickCount < 30) maxExposurePct = 0.6;
+    else if (this.tickCount < 55) maxExposurePct = 0.8;
+    if (totalExposure >= account.initial_balance * maxExposurePct) return false;
 
     // Dynamic portfolio balance based on market regime
     const regime = this.getRegimeFn ? this.getRegimeFn() : null;
