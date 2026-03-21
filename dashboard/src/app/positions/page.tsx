@@ -2,9 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
+import { DollarSign, TrendingUp, Layers } from "lucide-react";
 import { useDashboardStore } from "@/lib/store";
+import StatCard from "@/components/StatCard";
 import TradeModal from "@/components/TradeModal";
 import { PaperTradingEngine } from "@/lib/paper-trading";
+
+function fmt(n: number): string {
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
 
 export default function PositionsPage() {
   const { account, prices, closePosition } = useDashboardStore();
@@ -17,8 +23,48 @@ export default function PositionsPage() {
   const priceMap: Record<string, number> = {};
   for (const p of prices) priceMap[p.symbol] = p.price;
 
+  const totalEquity = engine.getTotalEquity();
+  const dailyPnl = totalEquity - account.initial_balance;
+  const dailyPnlPct =
+    account.initial_balance > 0
+      ? (dailyPnl / account.initial_balance) * 100
+      : 0;
+  const totalUnrealizedPnl = account.positions.reduce((sum, pos) => {
+    return sum + engine.getUnrealizedPnl(pos);
+  }, 0);
+
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="총 자산"
+          value={`$${fmt(totalEquity)}`}
+          icon={<DollarSign size={18} />}
+          trend="neutral"
+        />
+        <StatCard
+          title="총 손익"
+          value={`${dailyPnl >= 0 ? "+" : ""}$${fmt(dailyPnl)}`}
+          subtitle={`${dailyPnlPct >= 0 ? "+" : ""}${dailyPnlPct.toFixed(2)}%`}
+          icon={<TrendingUp size={18} />}
+          trend={dailyPnl >= 0 ? "up" : "down"}
+        />
+        <StatCard
+          title="오픈 포지션"
+          value={String(account.positions.length)}
+          subtitle={`미실현: ${totalUnrealizedPnl >= 0 ? "+" : ""}$${fmt(totalUnrealizedPnl)}`}
+          icon={<Layers size={18} />}
+          trend={totalUnrealizedPnl >= 0 ? "up" : "down"}
+        />
+        <StatCard
+          title="잔액"
+          value={`$${fmt(account.balance)}`}
+          subtitle={`초기: $${fmt(account.initial_balance)}`}
+          icon={<DollarSign size={18} />}
+          trend="neutral"
+        />
+      </div>
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">오픈 포지션</h1>
         <button
