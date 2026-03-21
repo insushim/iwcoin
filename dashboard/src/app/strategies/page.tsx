@@ -387,7 +387,7 @@ export default function StrategiesPage() {
                   </div>
                   <div className="flex-shrink-0 text-right">
                     <p className="text-sm font-bold text-zinc-300">
-                      {signal.confidence}%
+                      {Math.round(signal.confidence)}%
                     </p>
                     <p className="flex items-center gap-1 text-[10px] text-zinc-600">
                       <Clock size={10} />
