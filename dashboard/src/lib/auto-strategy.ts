@@ -114,8 +114,8 @@ function adjustSlTp(
     return { slPct: baseSlPct, tpPct: baseTpPct };
   }
   const atrPct = atr / currentPrice;
-  const slPct = Math.min(0.06, baseSlPct * (1 + atrPct));
-  const tpPct = Math.min(0.15, baseTpPct * (1 + atrPct));
+  const slPct = Math.min(0.035, baseSlPct * (1 + atrPct));
+  const tpPct = Math.min(0.08, baseTpPct * (1 + atrPct));
   return { slPct, tpPct };
 }
 
@@ -235,11 +235,12 @@ export class AutoStrategyRunner {
       (sum, p) => sum + p.quantity,
       0,
     );
-    // Early phase: cap at 60% to reserve capital for advanced strategies
-    // After 30 ticks (~15min): cap at 80%. After 55 ticks (~28min): full 95%
-    let maxExposurePct = 0.95;
-    if (this.tickCount < 30) maxExposurePct = 0.6;
-    else if (this.tickCount < 55) maxExposurePct = 0.8;
+    // Phased capital deployment — always keep 30% cash reserve
+    // Early phase: cap at 40% to reserve for advanced strategies
+    // After 30 ticks (~15min): cap at 55%. After 55 ticks (~28min): full 70%
+    let maxExposurePct = 0.7;
+    if (this.tickCount < 30) maxExposurePct = 0.4;
+    else if (this.tickCount < 55) maxExposurePct = 0.55;
     if (totalExposure >= account.initial_balance * maxExposurePct) return false;
 
     // Dynamic portfolio balance based on market regime
@@ -600,7 +601,7 @@ export class AutoStrategyRunner {
         const sector = coin?.sector ?? "";
         const history = this.priceHistory[pos.symbol];
         const { slPct, tpPct } = history
-          ? adjustSlTp(0.03, 0.05, history, currentPrice)
+          ? adjustSlTp(0.02, 0.04, history, currentPrice)
           : { slPct: 0.03, tpPct: 0.05 };
 
         signals.push({
@@ -797,7 +798,7 @@ export class AutoStrategyRunner {
 
       // Regime-aligned momentum: in bear market, short everything that's dropping
       if (regime?.regime === "bear" && change < -0.5) {
-        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({
           symbol,
           sector,
@@ -810,7 +811,7 @@ export class AutoStrategyRunner {
         });
       }
       if (regime?.regime === "bull" && change > 0.5) {
-        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({
           symbol,
           sector,
@@ -825,7 +826,7 @@ export class AutoStrategyRunner {
 
       // Strong movers: if 24h change > 2%, ride the momentum
       if (change > 2 && regime?.regime !== "bear") {
-        const { slPct, tpPct } = adjustSlTp(0.03, 0.1, history, currentPrice);
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.05, history, currentPrice);
         signals.push({
           symbol,
           sector,
@@ -838,7 +839,7 @@ export class AutoStrategyRunner {
         });
       }
       if (change < -2 && regime?.regime !== "bull") {
-        const { slPct, tpPct } = adjustSlTp(0.03, 0.1, history, currentPrice);
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.05, history, currentPrice);
         signals.push({
           symbol,
           sector,
@@ -889,7 +890,7 @@ export class AutoStrategyRunner {
         regime,
       );
       if (r) {
-        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({ ...r, symbol, sector, slPct, tpPct });
       }
     }
@@ -898,7 +899,7 @@ export class AutoStrategyRunner {
     if (regime && history.length >= 30) {
       const r = this.regimeStrategy(symbol, history, currentPrice, regime);
       if (r) {
-        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({ ...r, symbol, sector, slPct, tpPct });
       }
     }
@@ -913,7 +914,7 @@ export class AutoStrategyRunner {
         regime,
       );
       if (r) {
-        const { slPct, tpPct } = adjustSlTp(0.03, 0.06, history, currentPrice);
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({ ...r, symbol, sector, slPct, tpPct });
       }
     }
@@ -922,7 +923,7 @@ export class AutoStrategyRunner {
     if (history.length >= 30) {
       const r = this.macdStrategy(history, regime);
       if (r) {
-        const { slPct, tpPct } = adjustSlTp(0.04, 0.08, history, currentPrice);
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({ ...r, symbol, sector, slPct, tpPct });
       }
     }
@@ -931,7 +932,7 @@ export class AutoStrategyRunner {
     if (history.length >= 55) {
       const r = this.emaRibbonStrategy(history, currentPrice, regime);
       if (r) {
-        const { slPct, tpPct } = adjustSlTp(0.04, 0.08, history, currentPrice);
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.04, history, currentPrice);
         signals.push({ ...r, symbol, sector, slPct, tpPct });
       }
     }
@@ -945,7 +946,7 @@ export class AutoStrategyRunner {
         regime,
       );
       if (r) {
-        const { slPct, tpPct } = adjustSlTp(0.03, 0.1, history, currentPrice);
+        const { slPct, tpPct } = adjustSlTp(0.02, 0.05, history, currentPrice);
         signals.push({ ...r, symbol, sector, slPct, tpPct });
       }
     }

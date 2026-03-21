@@ -69,8 +69,8 @@ export interface TradingSettings {
 export const DEFAULT_SETTINGS: TradingSettings = {
   fee_rate: 0.001,
   slippage_rate: 0.0005,
-  max_position_pct: 0.1, // ~$1000 per position, better capital utilization
-  max_positions: 15, // more positions for spread
+  max_position_pct: 0.08, // ~$800 per position
+  max_positions: 10, // fewer, higher-conviction positions
   max_drawdown_pct: 0.2,
 };
 
