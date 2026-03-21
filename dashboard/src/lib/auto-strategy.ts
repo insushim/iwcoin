@@ -238,12 +238,28 @@ export class AutoStrategyRunner {
       // Max short ratio depends on Fear & Greed
       const regime = this.getRegimeFn ? this.getRegimeFn() : null;
       const fg = regime?.fearGreed ?? 50;
-      // F&G 10 → maxShort 80%, F&G 50 → 55%, F&G 90 → 30%
-      const maxShortRatio = Math.max(
-        0.3,
-        Math.min(0.8, 0.8 - (fg / 100) * 0.5),
-      );
-      const maxLongRatio = 1 - maxShortRatio + 0.1; // slight overlap allowed
+
+      let maxShortRatio: number;
+      let maxLongRatio: number;
+
+      if (fg < 15) {
+        // Extreme fear (< 15): contrarian mode — already bottomed, favor longs
+        // Shorting at the bottom is dangerous, flip bias toward longs
+        maxShortRatio = 0.35; // limit shorts to 35%
+        maxLongRatio = 0.75; // allow up to 75% longs
+      } else if (fg < 25) {
+        // High fear (15-24): cautious — reduce short bias, balanced
+        maxShortRatio = 0.5; // limit shorts to 50%
+        maxLongRatio = 0.6; // allow up to 60% longs
+      } else {
+        // Normal F&G-based calculation
+        // F&G 25 → maxShort 67%, F&G 50 → 55%, F&G 90 → 35%
+        maxShortRatio = Math.max(
+          0.35,
+          Math.min(0.75, 0.75 - (fg / 100) * 0.45),
+        );
+        maxLongRatio = 1 - maxShortRatio + 0.1;
+      }
 
       if (shortRatio > maxShortRatio && signal.side === "short") return false;
       if (longRatio > maxLongRatio && signal.side === "long") return false;
@@ -272,12 +288,23 @@ export class AutoStrategyRunner {
   }
 
   // ── Adaptive confidence threshold based on market regime ────────
-  private getMinConfidence(regime: RegimeData | null): number {
+  private getMinConfidence(
+    regime: RegimeData | null,
+    side?: "long" | "short",
+  ): number {
     if (!regime) return 50;
+    const fg = regime.fearGreed;
+
+    // Extreme fear (< 15): contrarian — shorts need very high confidence, longs easier
+    if (fg < 15) {
+      return side === "short" ? 72 : 48;
+    }
+    // High fear (15-24): shorts still need higher confidence
+    if (fg < 25) {
+      return side === "short" ? 65 : 52;
+    }
     // In bear market, require higher confidence to enter
     if (regime.regime === "bear") return 60;
-    // In extreme fear (F&G < 20), be more cautious
-    if (regime.fearGreed < 20) return 58;
     // Normal conditions
     return 50;
   }
@@ -391,8 +418,6 @@ export class AutoStrategyRunner {
     const availableBalance = account.balance;
 
     const regime = this.getRegimeFn ? this.getRegimeFn() : null;
-    const minConfidence = this.getMinConfidence(regime);
-
     // Collect ALL signals from ALL coins
     const allSignals: InternalSignal[] = [];
 
@@ -426,9 +451,10 @@ export class AutoStrategyRunner {
         coinPrice,
       );
 
-      // Filter by adaptive confidence threshold
+      // Filter by adaptive confidence threshold (side-aware in extreme fear)
       for (const signal of signals) {
-        if (signal.confidence >= minConfidence) {
+        const minConf = this.getMinConfidence(regime, signal.side);
+        if (signal.confidence >= minConf) {
           allSignals.push(signal);
         }
       }
