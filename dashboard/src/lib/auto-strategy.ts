@@ -244,14 +244,13 @@ export class AutoStrategyRunner {
       let maxLongRatio: number;
 
       if (fg < 15) {
-        // Extreme fear (< 15): contrarian mode — already bottomed, favor longs
-        // Shorting at the bottom is dangerous, flip bias toward longs
-        maxShortRatio = 0.35; // limit shorts to 35%
-        maxLongRatio = 0.75; // allow up to 75% longs
+        // Extreme fear (< 15): contrarian mode — favor longs but still allow shorts
+        maxShortRatio = 0.4; // limit shorts to 40%
+        maxLongRatio = 0.85; // allow up to 85% longs
       } else if (fg < 25) {
-        // High fear (15-24): cautious — reduce short bias, balanced
-        maxShortRatio = 0.5; // limit shorts to 50%
-        maxLongRatio = 0.6; // allow up to 60% longs
+        // High fear (15-24): cautious — moderate long bias
+        maxShortRatio = 0.45; // limit shorts to 45%
+        maxLongRatio = 0.7; // allow up to 70% longs
       } else {
         // Normal F&G-based calculation
         // F&G 25 → maxShort 67%, F&G 50 → 55%, F&G 90 → 35%
@@ -296,13 +295,13 @@ export class AutoStrategyRunner {
     if (!regime) return 50;
     const fg = regime.fearGreed;
 
-    // Extreme fear (< 15): contrarian — shorts need very high confidence, longs easier
+    // Extreme fear (< 15): contrarian — shorts need higher confidence, longs easier
     if (fg < 15) {
-      return side === "short" ? 72 : 48;
+      return side === "short" ? 62 : 48;
     }
-    // High fear (15-24): shorts still need higher confidence
+    // High fear (15-24): moderate bias toward longs
     if (fg < 25) {
-      return side === "short" ? 65 : 52;
+      return side === "short" ? 60 : 50;
     }
     // In bear market, require higher confidence to enter
     if (regime.regime === "bear") return 60;
