@@ -192,8 +192,8 @@ export class AutoStrategyRunner {
       account.balance + account.positions.reduce((s, p) => s + p.quantity, 0);
 
     let pctMultiplier: number;
-    if (confidence < 60) pctMultiplier = 0.5;
-    else if (confidence <= 75) pctMultiplier = 0.75;
+    if (confidence < 60) pctMultiplier = 0.7;
+    else if (confidence <= 75) pctMultiplier = 0.85;
     else pctMultiplier = 1.0;
 
     const posSize = equity * this.settings.max_position_pct * pctMultiplier;
@@ -227,7 +227,7 @@ export class AutoStrategyRunner {
       (sum, p) => sum + p.quantity,
       0,
     );
-    if (totalExposure >= account.initial_balance * 0.93) return false;
+    if (totalExposure >= account.initial_balance * 0.95) return false;
 
     // Dynamic portfolio balance based on market regime
     // Skip balance check when < 4 positions (not enough to judge ratio meaningfully)
