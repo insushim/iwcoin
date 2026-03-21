@@ -230,39 +230,36 @@ export class AutoStrategyRunner {
     if (totalExposure >= account.initial_balance * 0.95) return false;
 
     // Dynamic portfolio balance based on market regime
-    // Skip balance check when < 6 positions (not enough to judge ratio meaningfully)
-    const exposure = this.engine.getPortfolioExposure();
-    const totalExp = exposure.longExposure + exposure.shortExposure;
-    if (totalExp > 0 && account.positions.length >= 6) {
-      const shortRatio = exposure.shortExposure / totalExp;
-      const longRatio = exposure.longExposure / totalExp;
-      // Max short ratio depends on Fear & Greed
-      const regime = this.getRegimeFn ? this.getRegimeFn() : null;
-      const fg = regime?.fearGreed ?? 50;
+    const regime = this.getRegimeFn ? this.getRegimeFn() : null;
+    const fg = regime?.fearGreed ?? 50;
 
-      let maxShortRatio: number;
-      let maxLongRatio: number;
+    // In extreme fear (< 15), skip balance check — contrarian all-long is intentional
+    if (fg >= 15 && account.positions.length >= 4) {
+      const exposure = this.engine.getPortfolioExposure();
+      const totalExp = exposure.longExposure + exposure.shortExposure;
+      if (totalExp > 0) {
+        const shortRatio = exposure.shortExposure / totalExp;
+        const longRatio = exposure.longExposure / totalExp;
 
-      if (fg < 15) {
-        // Extreme fear (< 15): contrarian mode — favor longs but still allow shorts
-        maxShortRatio = 0.4; // limit shorts to 40%
-        maxLongRatio = 0.85; // allow up to 85% longs
-      } else if (fg < 25) {
-        // High fear (15-24): cautious — moderate long bias
-        maxShortRatio = 0.45; // limit shorts to 45%
-        maxLongRatio = 0.7; // allow up to 70% longs
-      } else {
-        // Normal F&G-based calculation
-        // F&G 25 → maxShort 67%, F&G 50 → 55%, F&G 90 → 35%
-        maxShortRatio = Math.max(
-          0.35,
-          Math.min(0.75, 0.75 - (fg / 100) * 0.45),
-        );
-        maxLongRatio = 1 - maxShortRatio + 0.1;
+        let maxShortRatio: number;
+        let maxLongRatio: number;
+
+        if (fg < 25) {
+          // High fear (15-24): moderate long bias
+          maxShortRatio = 0.45;
+          maxLongRatio = 0.7;
+        } else {
+          // Normal F&G-based calculation
+          maxShortRatio = Math.max(
+            0.35,
+            Math.min(0.75, 0.75 - (fg / 100) * 0.45),
+          );
+          maxLongRatio = 1 - maxShortRatio + 0.1;
+        }
+
+        if (shortRatio > maxShortRatio && signal.side === "short") return false;
+        if (longRatio > maxLongRatio && signal.side === "long") return false;
       }
-
-      if (shortRatio > maxShortRatio && signal.side === "short") return false;
-      if (longRatio > maxLongRatio && signal.side === "long") return false;
     }
 
     // Never open opposite directions on same coin (long+short = pointless, just pays fees)
