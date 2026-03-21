@@ -230,9 +230,10 @@ export class AutoStrategyRunner {
     if (totalExposure >= account.initial_balance * 0.93) return false;
 
     // Dynamic portfolio balance based on market regime
+    // Skip balance check when < 4 positions (not enough to judge ratio meaningfully)
     const exposure = this.engine.getPortfolioExposure();
     const totalExp = exposure.longExposure + exposure.shortExposure;
-    if (totalExp > 0) {
+    if (totalExp > 0 && account.positions.length >= 4) {
       const shortRatio = exposure.shortExposure / totalExp;
       const longRatio = exposure.longExposure / totalExp;
       // Max short ratio depends on Fear & Greed
