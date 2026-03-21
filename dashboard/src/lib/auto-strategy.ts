@@ -1356,10 +1356,66 @@ export class AutoStrategyRunner {
 
     if (r === "bear") {
       regimeLabel = "약세장";
+      const fg = regime.fearGreed;
       const isDefensive =
         sector === "store-of-value" ||
         sector === "payment" ||
         sector === "exchange";
+
+      // Extreme fear (F&G < 15): contrarian — everything is oversold, favor longs
+      if (fg < 15) {
+        if (isDefensive && rsi <= 60) {
+          return {
+            side: "long",
+            strategy: "섹터 로테이션",
+            confidence: 68,
+            reason: `${regimeLabel} 극공포(${fg}): ${sector} 방어 섹터 역발상 롱, RSI(${rsi.toFixed(0)})`,
+          };
+        }
+        // Growth sectors also get contrarian long at extreme fear (they bounce hardest)
+        if (!isDefensive && rsi <= 50) {
+          return {
+            side: "long",
+            strategy: "섹터 로테이션",
+            confidence: 58,
+            reason: `${regimeLabel} 극공포(${fg}): ${sector} 성장 섹터 반등 롱, RSI(${rsi.toFixed(0)})`,
+          };
+        }
+        return null;
+      }
+
+      // High fear (F&G 15-24): moderate contrarian
+      if (fg < 25) {
+        if (isDefensive && rsi <= 55) {
+          return {
+            side: "long",
+            strategy: "섹터 로테이션",
+            confidence: 65,
+            reason: `${regimeLabel} 공포(${fg}): ${sector} 방어 섹터 롱, RSI(${rsi.toFixed(0)})`,
+          };
+        }
+        // Growth sectors: allow long if RSI is low enough
+        if (!isDefensive && rsi <= 40) {
+          return {
+            side: "long",
+            strategy: "섹터 로테이션",
+            confidence: 55,
+            reason: `${regimeLabel} 공포(${fg}): ${sector} 과매도 롱, RSI(${rsi.toFixed(0)})`,
+          };
+        }
+        // Still allow shorts but with moderate confidence
+        if (!isDefensive && rsi >= 50) {
+          return {
+            side: "short",
+            strategy: "섹터 로테이션",
+            confidence: 62,
+            reason: `${regimeLabel}: ${sector} 성장 섹터 숏, RSI(${rsi.toFixed(0)})`,
+          };
+        }
+        return null;
+      }
+
+      // Normal bear (F&G >= 25): original logic
       // Defensive sectors → long (safe haven buying)
       if (isDefensive && rsi <= 55) {
         return {
