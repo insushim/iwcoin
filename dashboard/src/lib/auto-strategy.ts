@@ -469,12 +469,6 @@ export class AutoStrategyRunner {
 
     // Fill positions respecting diversification rules
     for (const signal of allSignals) {
-      if (availableBalance < 100) break;
-      if (!this.canOpenPosition(signal)) continue;
-
-      const price = priceMap[signal.symbol];
-      if (!price) continue;
-
       // Record signal for UI (always, even if we can't open)
       this.addSignal({
         strategy: signal.strategy,
@@ -484,6 +478,12 @@ export class AutoStrategyRunner {
         reason: signal.reason,
         timestamp: Date.now(),
       });
+
+      if (availableBalance < 100) break;
+      if (!this.canOpenPosition(signal)) continue;
+
+      const price = priceMap[signal.symbol];
+      if (!price) continue;
 
       if (availableBalance < 100) continue;
 
