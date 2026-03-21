@@ -233,8 +233,8 @@ export class AutoStrategyRunner {
     const regime = this.getRegimeFn ? this.getRegimeFn() : null;
     const fg = regime?.fearGreed ?? 50;
 
-    // In extreme fear (< 15), skip balance check — contrarian all-long is intentional
-    if (fg >= 15 && account.positions.length >= 4) {
+    // Portfolio balance check (skip when < 4 positions)
+    if (account.positions.length >= 4) {
       const exposure = this.engine.getPortfolioExposure();
       const totalExp = exposure.longExposure + exposure.shortExposure;
       if (totalExp > 0) {
@@ -244,10 +244,14 @@ export class AutoStrategyRunner {
         let maxShortRatio: number;
         let maxLongRatio: number;
 
-        if (fg < 25) {
+        if (fg < 15) {
+          // Extreme fear: 70% long / 30% short for hedging
+          maxShortRatio = 0.35;
+          maxLongRatio = 0.75;
+        } else if (fg < 25) {
           // High fear (15-24): moderate long bias
-          maxShortRatio = 0.45;
-          maxLongRatio = 0.7;
+          maxShortRatio = 0.4;
+          maxLongRatio = 0.65;
         } else {
           // Normal F&G-based calculation
           maxShortRatio = Math.max(
