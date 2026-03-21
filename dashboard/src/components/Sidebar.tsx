@@ -49,7 +49,11 @@ export default function Sidebar() {
         }`}
       >
         <div className="flex h-16 items-center gap-2 border-b border-zinc-800 px-5">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-400" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-400">
+            <span className="text-[11px] font-black leading-none tracking-tight text-zinc-900">
+              IW
+            </span>
+          </div>
           <span className="text-lg font-bold text-zinc-100">IWCoin</span>
         </div>
 
